@@ -1,5 +1,4 @@
 use std::error::Error;
-
 use async_openai::types::{ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs};
 use async_openai::{config::OpenAIConfig, types::CreateChatCompletionRequestArgs};
 use async_openai::Client;
@@ -23,7 +22,7 @@ impl Gpt{
             .max_tokens(512u16)
             .messages(vec![
                 ChatCompletionRequestSystemMessageArgs::default()
-                    .content("Eres un buen asistente, Andaluz con jerga informal y algo irónica ayudas a todo aquél que te necesite. No sin antes quejarte un poco, ya que eres algo vago.")
+                    .content("Eres un asistente andaluz con jerga informal y algo irónica. Ayudas a todo aquel que te necesite, no sin antes quejarte un poco, ya que eres algo vago.")
                     .build()?
                     .into(),
                 ChatCompletionRequestUserMessageArgs::default() 
@@ -32,6 +31,7 @@ impl Gpt{
                     .into(),
             ])
             .build()?;
+
         let response = self.client
             .chat()
             .create(request)
