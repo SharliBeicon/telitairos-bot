@@ -1,12 +1,11 @@
-use telitairos_bot::bot::{handle, Command};
-use teloxide::Bot;
-use teloxide::repls::CommandReplExt;
+use telitairos_bot::{answer, Command};
+use teloxide::{prelude::*, repls::CommandReplExt};
 
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
-    log::info!("Starting bot...");
-    
-    let telitairo_bot = Bot::from_env();
-    Command::repl(telitairo_bot, handle).await;
+    log::info!("Starting bot");
+
+    let bot = Bot::from_env();
+    Command::repl(bot, answer).await;
 }
