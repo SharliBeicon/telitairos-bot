@@ -41,12 +41,13 @@ pub async fn mediate(messages: Messages) -> Result<String, Box<dyn Error>> {
     let messages_lock = messages.read().await;
 
     let mut conversation = Builder::default();
-    let _ = messages_lock.iter().map(|message| {
+    for message in messages_lock.iter() {
         conversation.append(message.from().unwrap().full_name());
         conversation.append(": ");
         conversation.append(message.text().unwrap());
         conversation.append("\n");
-    });
+    }
+
     drop(messages_lock);
 
     let client = init_gpt_client()?;
