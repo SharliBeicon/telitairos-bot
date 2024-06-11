@@ -1,4 +1,4 @@
-use crate::bot::Messages;
+use crate::types::Messages;
 use async_openai::{
     config::OpenAIConfig,
     types::{
@@ -18,7 +18,7 @@ pub async fn ask(question: String) -> Result<String, Box<dyn Error>> {
         .max_tokens(512u16)
         .messages(vec![
             ChatCompletionRequestSystemMessageArgs::default()
-                .content(crate::consts::PERSONALITY)
+                .content(crate::types::PERSONALITY)
                 .build()?
                 .into(),
             ChatCompletionRequestUserMessageArgs::default()
@@ -56,11 +56,11 @@ pub async fn mediate(messages: Messages) -> Result<String, Box<dyn Error>> {
         .max_tokens(4096u16)
         .messages(vec![
             ChatCompletionRequestSystemMessageArgs::default()
-                .content(crate::consts::PERSONALITY)
+                .content(crate::types::PERSONALITY)
                 .build()?
                 .into(),
             ChatCompletionRequestSystemMessageArgs::default()
-                .content(crate::consts::MEDIATE_QUERY)
+                .content(crate::types::MEDIATE_QUERY)
                 .build()?
                 .into(),
             ChatCompletionRequestSystemMessageArgs::default()

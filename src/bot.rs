@@ -1,9 +1,5 @@
-use crate::{consts, gpt};
-use std::{collections::VecDeque, sync::Arc};
+use crate::{gpt, types};
 use teloxide::{prelude::*, utils::command::BotCommands};
-use tokio::sync::RwLock;
-
-pub type Messages = Arc<RwLock<VecDeque<Message>>>;
 
 #[derive(BotCommands, Clone)]
 #[command(
@@ -27,7 +23,7 @@ pub enum Command {
 
 pub async fn handle_commands(
     bot: Bot,
-    messages: Messages,
+    messages: types::Messages,
     msg: Message,
     cmd: Command,
 ) -> ResponseResult<()> {
@@ -57,9 +53,9 @@ pub async fn handle_commands(
     Ok(())
 }
 
-pub async fn handle_messages(messages: Messages, msg: Message) -> ResponseResult<()> {
+pub async fn handle_messages(messages: types::Messages, msg: Message) -> ResponseResult<()> {
     let mut messages_lock = messages.write().await;
-    if messages_lock.len() == consts::STORE_CAPACITY {
+    if messages_lock.len() == types::STORE_CAPACITY {
         messages_lock.pop_front();
     }
     messages_lock.push_back(msg.clone());
