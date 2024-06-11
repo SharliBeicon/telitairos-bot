@@ -1,4 +1,4 @@
-use crate::gpt;
+use crate::{consts, gpt};
 use std::{collections::VecDeque, sync::Arc};
 use teloxide::{prelude::*, utils::command::BotCommands};
 use tokio::sync::RwLock;
@@ -59,7 +59,7 @@ pub async fn handle_commands(
 
 pub async fn handle_messages(messages: Messages, msg: Message) -> ResponseResult<()> {
     let mut messages_lock = messages.write().await;
-    if messages_lock.len() == 100 {
+    if messages_lock.len() == consts::STORE_CAPACITY {
         messages_lock.pop_front();
     }
     messages_lock.push_back(msg.clone());

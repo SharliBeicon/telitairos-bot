@@ -14,15 +14,13 @@ async fn main() {
         crate::consts::STORE_CAPACITY,
     )));
 
-    let handler = Update::filter_message().branch(
-        dptree::entry()
-            .branch(
-                Update::filter_message()
-                    .filter_command::<bot::Command>()
-                    .endpoint(bot::handle_commands),
-            )
-            .branch(Update::filter_message().endpoint(bot::handle_messages)),
-    );
+    let handler = dptree::entry()
+        .branch(
+            Update::filter_message()
+                .filter_command::<bot::Command>()
+                .endpoint(bot::handle_commands),
+        )
+        .branch(Update::filter_message().endpoint(bot::handle_messages));
 
     Dispatcher::builder(bot, handler)
         .dependencies(dptree::deps![messages_store])
