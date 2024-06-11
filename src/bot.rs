@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::{gpt, types};
 use teloxide::{prelude::*, utils::command::BotCommands};
 
@@ -41,7 +43,7 @@ pub async fn handle_commands(
             bot.send_message(msg.chat.id, answer).await?;
         }
         Command::Mediate => {
-            let answer = match gpt::mediate(messages).await {
+            let answer = match gpt::mediate(messages, msg.chat.id).await {
                 Ok(response) => response,
                 Err(err) => format!("Error getting an answer from OpenAI: {err}"),
             };
@@ -55,10 +57,19 @@ pub async fn handle_commands(
 
 pub async fn handle_messages(messages: types::Messages, msg: Message) -> ResponseResult<()> {
     let mut messages_lock = messages.write().await;
-    if messages_lock.len() == types::STORE_CAPACITY {
-        messages_lock.pop_front();
+    match messages_lock.get_mut(&msg.chat.id) {
+        Some(buffer) => {
+            if buffer.len() == types::STORE_CAPACITY {
+                buffer.pop_front();
+            }
+            buffer.push_back(msg.clone());
+        }
+        None => {
+            let mut buffer = VecDeque::new();
+            buffer.push_back(msg.clone());
+            messages_lock.insert(msg.chat.id, buffer);
+        }
     }
-    messages_lock.push_back(msg.clone());
 
     Ok(())
 }

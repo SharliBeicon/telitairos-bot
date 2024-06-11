@@ -1,4 +1,4 @@
-use crate::types::Messages;
+use crate::types;
 use async_openai::{
     config::OpenAIConfig,
     types::{
@@ -9,6 +9,7 @@ use async_openai::{
 };
 use std::{env, error::Error};
 use string_builder::Builder;
+use teloxide::types::ChatId;
 
 pub async fn ask(question: String) -> Result<String, Box<dyn Error>> {
     let client = init_gpt_client()?;
@@ -18,7 +19,7 @@ pub async fn ask(question: String) -> Result<String, Box<dyn Error>> {
         .max_tokens(512u16)
         .messages(vec![
             ChatCompletionRequestSystemMessageArgs::default()
-                .content(crate::types::PERSONALITY)
+                .content(types::PERSONALITY)
                 .build()?
                 .into(),
             ChatCompletionRequestUserMessageArgs::default()
@@ -37,11 +38,17 @@ pub async fn ask(question: String) -> Result<String, Box<dyn Error>> {
 }
 
 // TODO: Better user and message handling
-pub async fn mediate(messages: Messages) -> Result<String, Box<dyn Error>> {
+pub async fn mediate(messages: types::Messages, chat_id: ChatId) -> Result<String, Box<dyn Error>> {
     let messages_lock = messages.read().await;
 
     let mut conversation = Builder::default();
-    for message in messages_lock.iter() {
+
+    let buffer = match messages_lock.get(&chat_id) {
+        Some(b) => b,
+        None => return Err("Buffer with selected ChatId does not exist".into()),
+    };
+
+    for message in buffer.iter() {
         conversation.append(message.from().unwrap().full_name());
         conversation.append(": ");
         conversation.append(message.text().unwrap());
@@ -56,11 +63,11 @@ pub async fn mediate(messages: Messages) -> Result<String, Box<dyn Error>> {
         .max_tokens(4096u16)
         .messages(vec![
             ChatCompletionRequestSystemMessageArgs::default()
-                .content(crate::types::PERSONALITY)
+                .content(types::PERSONALITY)
                 .build()?
                 .into(),
             ChatCompletionRequestSystemMessageArgs::default()
-                .content(crate::types::MEDIATE_QUERY)
+                .content(types::MEDIATE_QUERY)
                 .build()?
                 .into(),
             ChatCompletionRequestSystemMessageArgs::default()

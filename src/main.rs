@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use telitairos_bot::{bot, types};
 use teloxide::prelude::*;
 use tokio::sync::RwLock;
@@ -10,9 +10,7 @@ async fn main() {
 
     let bot = Bot::from_env();
 
-    let messages_store: types::Messages = Arc::new(RwLock::new(VecDeque::with_capacity(
-        crate::types::STORE_CAPACITY,
-    )));
+    let messages_store: types::Messages = Arc::new(RwLock::new(HashMap::new()));
 
     let handler = dptree::entry()
         .branch(
