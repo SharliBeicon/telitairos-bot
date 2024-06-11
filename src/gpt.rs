@@ -1,3 +1,4 @@
+use crate::bot::Messages;
 use async_openai::{
     config::OpenAIConfig,
     types::{
@@ -32,6 +33,22 @@ pub async fn ask(question: String) -> Result<String, Box<dyn Error>> {
         Some(msg) => Ok(String::from(msg)),
         None => Err("No response given".into()),
     }
+}
+
+pub async fn mediate(messages: Messages) -> Result<String, Box<dyn Error>> {
+    let messages_lock = messages.read().await;
+
+    let texts_array: Vec<(String, String)> = messages_lock
+        .iter()
+        .map(|message| {
+            (
+                message.from().unwrap().full_name(),
+                String::from(message.text().unwrap()),
+            )
+        })
+        .collect();
+
+    Ok(format!("{:#?}", texts_array))
 }
 
 fn init_gpt_client() -> Result<Client<OpenAIConfig>, Box<dyn Error>> {
