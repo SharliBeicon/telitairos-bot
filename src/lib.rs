@@ -1,8 +1,9 @@
 //! # A fully functional AI Powered Telegram bot
 //!
-//! You can either `/ask` for a specified question or `/mediate` to read the last N messages of a
-//! chat group and mitigate an argument.
-//!
+//! ## Supported commands
+//! You can either:
+//! - `/ask` for a specified question.
+//! - `/mediate` to read the last N messages of a chat group and mitigate an argument.
 //!
 //! ## Environment variables needed
 //! ```
