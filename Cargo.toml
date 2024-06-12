@@ -5,8 +5,7 @@ edition = "2021"
 license = "MIT"
 keywords = ["ai", "telegram", "bot", "admin", "chatbot"]
 categories = ["command-line-utilities"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+exclude = ["src/main.rs"]
 
 [dependencies]
 async-openai = "0.23.1"
