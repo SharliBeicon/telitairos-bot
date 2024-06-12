@@ -38,7 +38,10 @@ pub async fn ask(question: String) -> Result<String, Box<dyn Error>> {
 }
 
 // TODO: Better user and message handling
-pub async fn mediate(buffer: types::Buffer, chat_id: ChatId) -> Result<String, Box<dyn Error>> {
+pub async fn mediate(
+    buffer: types::BufferStore,
+    chat_id: ChatId,
+) -> Result<String, Box<dyn Error>> {
     let buffer_lock = buffer.read().await;
 
     let mut conversation = Builder::default();
