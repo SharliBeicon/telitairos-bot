@@ -1,16 +1,27 @@
 # A fully functional AI Powered Telegram bot
 
-## Supported commands
-You can either:
-- `/ask` for a specified question.
-- `/mediate` to read the last N messages of a chat group and mitigate an argument.
-
-## Environment variables needed
+## Setup guide
+### Add environment variables
 ```
 - TELOXIDE_TOKEN= "/* Your Telegram Bot API Key */"
 - OPENAI_API_KEY= "/* Your OpenAI API Key */"
 - OPENAI_ORG_ID= "/* Your OpenAI Organization ID */"
 ```
+### Put these lines into your Cargo.toml
+```
+[dependencies]
+telitairos-bot = "0.1.1"
+teloxide = { version = "0.12", features = ["macros"] }
+log = "0.4"
+pretty_env_logger = "0.4"
+tokio = { version =  "1.8", features = ["rt-multi-thread", "macros"] }
+```
+
+## Supported commands
+You can either:
+- `/ask` for a specified question.
+- `/mediate` to read the last N messages of a chat group and mitigate an argument.
+
 
 ## Basic usage
 
