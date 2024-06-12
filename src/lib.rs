@@ -1,17 +1,39 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use teloxide::prelude::*;
+use teloxide::{dptree, Bot};
+use tokio::sync::RwLock;
 pub mod bot;
 pub mod gpt;
+pub mod types;
 
-pub mod types {
-    use std::{
-        collections::{HashMap, VecDeque},
-        sync::Arc,
-    };
-    use teloxide::types::{ChatId, Message};
-    use tokio::sync::RwLock;
+pub struct TelitairoBot {}
 
-    pub const PERSONALITY: &str= "Eres un asistente andaluz con jerga informal y algo irónica. Ayudas a todo aquel que te necesite, no sin antes quejarte un poco, ya que eres algo vago.";
-    pub const MEDIATE_QUERY: &str= "A partir de los siguientes mensajes, analiza una posible discusión y da la razón a alguno de los implicados, con una pequeña argumentación.";
-    pub const STORE_CAPACITY: usize = 200;
+impl TelitairoBot {
+    pub async fn dispatch() {
+        let bot = Bot::from_env();
+        let buffer: types::Buffer = Arc::new(RwLock::new(HashMap::new()));
 
-    pub type Messages = Arc<RwLock<HashMap<ChatId, VecDeque<Message>>>>;
+        let handler = dptree::entry()
+            .branch(
+                Update::filter_message()
+                    .filter_command::<bot::Command>()
+                    .endpoint(bot::handle_commands),
+            )
+            .branch(Update::filter_message().endpoint(bot::handle_messages));
+
+        Dispatcher::builder(bot, handler)
+            .dependencies(dptree::deps![buffer])
+            .default_handler(|update| async move {
+                log::warn!("Unhandled update: {:#?}", update);
+            })
+            .error_handler(LoggingErrorHandler::with_custom_text(
+                "An error occurred in the dispatcher",
+            ))
+            .enable_ctrlc_handler()
+            .build()
+            .dispatch()
+            .await
+    }
 }

@@ -59,7 +59,7 @@ pub async fn handle_messages(messages: types::Messages, msg: Message) -> Respons
     let mut messages_lock = messages.write().await;
     match messages_lock.get_mut(&msg.chat.id) {
         Some(buffer) => {
-            if buffer.len() == types::STORE_CAPACITY {
+            if buffer.len() == types::BUFFER_CAPACITY {
                 buffer.pop_front();
             }
             buffer.push_back(msg.clone());
