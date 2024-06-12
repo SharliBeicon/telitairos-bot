@@ -2,13 +2,13 @@
 
 ## Setup guide
 ### Add environment variables
-```
+```bash
 - TELOXIDE_TOKEN= "/* Your Telegram Bot API Key */"
 - OPENAI_API_KEY= "/* Your OpenAI API Key */"
 - OPENAI_ORG_ID= "/* Your OpenAI Organization ID */"
 ```
 ### Put these lines into your Cargo.toml
-```
+```toml
 [dependencies]
 telitairos-bot = "0.1.1"
 teloxide = { version = "0.12", features = ["macros"] }
@@ -31,7 +31,7 @@ A size for the context of the N last messages of the chat group is also needed.
 For a detailed example go to [TelitairoBot](https://docs.rs/telitairos-bot/latest/telitairos_bot/struct.TelitairoBot.html)
 ### Example
 
-```
+```rust
 #[tokio::main]
 async fn main() {
    pretty_env_logger::init();
