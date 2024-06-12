@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::{gpt, types};
+use crate::{gpt, types, TelitairoBot};
 use teloxide::{prelude::*, utils::command::BotCommands};
 
 #[derive(BotCommands, Clone)]
@@ -26,6 +26,7 @@ pub enum Command {
 pub async fn handle_commands(
     bot: Bot,
     buffer_store: types::BufferStore,
+    telitairo_bot: TelitairoBot,
     msg: Message,
     cmd: Command,
 ) -> ResponseResult<()> {
@@ -35,7 +36,7 @@ pub async fn handle_commands(
                 .await?;
         }
         Command::Ask(question) => {
-            let answer = match gpt::ask(question).await {
+            let answer = match gpt::ask(question, telitairo_bot).await {
                 Ok(response) => response,
                 Err(err) => format!("Error getting an answer from OpenAI: {err}"),
             };
@@ -43,7 +44,7 @@ pub async fn handle_commands(
             bot.send_message(msg.chat.id, answer).await?;
         }
         Command::Mediate => {
-            let answer = match gpt::mediate(buffer_store, msg.chat.id).await {
+            let answer = match gpt::mediate(buffer_store, telitairo_bot, msg.chat.id).await {
                 Ok(response) => response,
                 Err(err) => format!("Error getting an answer from OpenAI: {err}"),
             };
@@ -55,11 +56,15 @@ pub async fn handle_commands(
     Ok(())
 }
 
-pub async fn handle_messages(buffer_store: types::BufferStore, msg: Message) -> ResponseResult<()> {
+pub async fn handle_messages(
+    buffer_store: types::BufferStore,
+    telitairo_bot: TelitairoBot,
+    msg: Message,
+) -> ResponseResult<()> {
     let mut buffer_store_lock = buffer_store.write().await;
     match buffer_store_lock.get_mut(&msg.chat.id) {
         Some(buffer) => {
-            if buffer.len() == types::BUFFER_CAPACITY {
+            if buffer.len() == telitairo_bot.buffer_size {
                 buffer.pop_front();
             }
             buffer.push_back(msg.clone());
