@@ -38,12 +38,12 @@ pub async fn ask(question: String) -> Result<String, Box<dyn Error>> {
 }
 
 // TODO: Better user and message handling
-pub async fn mediate(messages: types::Messages, chat_id: ChatId) -> Result<String, Box<dyn Error>> {
-    let messages_lock = messages.read().await;
+pub async fn mediate(buffer: types::Buffer, chat_id: ChatId) -> Result<String, Box<dyn Error>> {
+    let buffer_lock = buffer.read().await;
 
     let mut conversation = Builder::default();
 
-    let buffer = match messages_lock.get(&chat_id) {
+    let buffer = match buffer_lock.get(&chat_id) {
         Some(b) => b,
         None => return Err("Buffer with selected ChatId does not exist".into()),
     };
@@ -55,7 +55,7 @@ pub async fn mediate(messages: types::Messages, chat_id: ChatId) -> Result<Strin
         conversation.append("\n");
     }
 
-    drop(messages_lock);
+    drop(buffer_lock);
 
     let client = init_gpt_client()?;
     let request = CreateChatCompletionRequestArgs::default()

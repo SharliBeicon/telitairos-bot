@@ -25,7 +25,7 @@ pub enum Command {
 
 pub async fn handle_commands(
     bot: Bot,
-    messages: types::Messages,
+    buffer_store: types::BufferStore,
     msg: Message,
     cmd: Command,
 ) -> ResponseResult<()> {
@@ -43,7 +43,7 @@ pub async fn handle_commands(
             bot.send_message(msg.chat.id, answer).await?;
         }
         Command::Mediate => {
-            let answer = match gpt::mediate(messages, msg.chat.id).await {
+            let answer = match gpt::mediate(buffer_store, msg.chat.id).await {
                 Ok(response) => response,
                 Err(err) => format!("Error getting an answer from OpenAI: {err}"),
             };
@@ -55,9 +55,9 @@ pub async fn handle_commands(
     Ok(())
 }
 
-pub async fn handle_messages(messages: types::Messages, msg: Message) -> ResponseResult<()> {
-    let mut messages_lock = messages.write().await;
-    match messages_lock.get_mut(&msg.chat.id) {
+pub async fn handle_messages(buffer_store: types::BufferStore, msg: Message) -> ResponseResult<()> {
+    let mut buffer_store_lock = buffer_store.write().await;
+    match buffer_store_lock.get_mut(&msg.chat.id) {
         Some(buffer) => {
             if buffer.len() == types::BUFFER_CAPACITY {
                 buffer.pop_front();
@@ -67,7 +67,7 @@ pub async fn handle_messages(messages: types::Messages, msg: Message) -> Respons
         None => {
             let mut buffer = VecDeque::new();
             buffer.push_back(msg.clone());
-            messages_lock.insert(msg.chat.id, buffer);
+            buffer_store_lock.insert(msg.chat.id, buffer);
         }
     }
 

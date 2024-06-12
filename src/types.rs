@@ -9,4 +9,4 @@ pub const PERSONALITY: &str= "Eres un asistente andaluz con jerga informal y alg
 pub const MEDIATE_QUERY: &str= "A partir de los siguientes mensajes, analiza una posible discusión y da la razón a alguno de los implicados, con una pequeña argumentación.";
 pub const BUFFER_CAPACITY: usize = 200;
 
-pub type Buffer = Arc<RwLock<HashMap<ChatId, VecDeque<Message>>>>;
+pub type BufferStore = Arc<RwLock<HashMap<ChatId, VecDeque<Message>>>>;

@@ -13,7 +13,7 @@ pub struct TelitairoBot {}
 impl TelitairoBot {
     pub async fn dispatch() {
         let bot = Bot::from_env();
-        let buffer: types::Buffer = Arc::new(RwLock::new(HashMap::new()));
+        let buffer_store: types::BufferStore = Arc::new(RwLock::new(HashMap::new()));
 
         let handler = dptree::entry()
             .branch(
@@ -24,7 +24,7 @@ impl TelitairoBot {
             .branch(Update::filter_message().endpoint(bot::handle_messages));
 
         Dispatcher::builder(bot, handler)
-            .dependencies(dptree::deps![buffer])
+            .dependencies(dptree::deps![buffer_store])
             .default_handler(|update| async move {
                 log::warn!("Unhandled update: {:#?}", update);
             })
