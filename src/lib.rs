@@ -21,6 +21,15 @@
 //!
 //! ### Example
 //!
+//! TelitairoBot struct implements Default trait, so you can start a bot with a generic personality
+//! by just doing this:
+//!
+//! ```
+//! let telitairo_bot: TelitairoBot = Default::default();
+//! ```
+//!
+//! But if you want to set your own Bot's personality you can use the `new()` function like this:
+//!
 //! ```
 //! #[tokio::main]
 //! async fn main() {
@@ -108,5 +117,16 @@ impl TelitairoBot {
             .build()
             .dispatch()
             .await
+    }
+}
+
+/// Default attributes for a generic assistant bot
+impl Default for TelitairoBot {
+    fn default() -> Self {
+        TelitairoBot {
+            personality: types::DEFAULT_PERSONALITY.to_string(),
+            mediate_query: types::DEFAULT_MEDIATION_QUERY.to_string(),
+            buffer_size: types::DEFAULT_BUFFER_SIZE,
+        }
     }
 }

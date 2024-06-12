@@ -30,7 +30,7 @@
 5. Put these lines into your Cargo.toml
 ```toml
 [dependencies]
-telitairos-bot = "0.1.1"
+telitairos-bot = "0.1.2"
 teloxide = { version = "0.12", features = ["macros"] }
 log = "0.4"
 pretty_env_logger = "0.4"
@@ -45,7 +45,14 @@ You can either:
 
 ## Basic usage
 
-You need to specify the personality of the bot as well as its criteria when mitigating an argument.
+TelitairoBot struct implements Default trait, so you can start a bot with a generic personality
+by just doing this:
+
+```rust
+let telitairo_bot: TelitairoBot = Default::default();
+```
+
+If you want to set your own parameters, you need to specify the personality of the bot as well as its criteria when mitigating an argument.
 A size for the context of the N last messages of the chat group is also needed.
 
 For a detailed example go to [TelitairoBot](https://docs.rs/telitairos-bot/latest/telitairos_bot/struct.TelitairoBot.html)

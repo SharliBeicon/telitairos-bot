@@ -8,17 +8,13 @@ use teloxide::{prelude::*, utils::command::BotCommands};
     rename_rule = "lowercase",
     description = "These commands are supported"
 )]
-///A set of commands supported by the bot.
 pub enum Command {
-    ///Display this text.
     #[command(description = "Display this text.")]
     Help,
 
-    ///Ask the bot a question.
     #[command(description = "Ask the bot a question.")]
     Ask(String),
 
-    ///Ask the bot to mediate a discussion
     #[command(description = "Ask the bot to mediate a discussion")]
     Mediate,
 }
