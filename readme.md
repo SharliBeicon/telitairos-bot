@@ -1,4 +1,21 @@
-# A fully functional AI Powered Telegram bot
+<div align="center">
+  <a href="https://imgbb.com/"><img src="https://i.ibb.co/5kmL1Yj/photo-2024-04-08-10-51-03-removebg-preview.png" alt="photo-2024-04-08-10-51-03-removebg-preview" border="0" width="200"></a>
+  <h1><code>Telitairos Bot</code></h1>
+  <a href="https://docs.rs/telitairos-bot/">
+    <img src="https://docs.rs/telitairos-bot/badge.svg">
+  </a>
+   <a href="https://github.com/SharliBeicon/telitairos-bot/actions/workflows/rust.yml">
+    <img src="https://github.com/SharliBeicon/telitairos-bot/actions/workflows/rust.yml/badge.svg">
+  </a>
+  <a href="https://crates.io/crates/telitairos-bot">
+    <img src="https://img.shields.io/crates/v/telitairos-bot.svg">
+  </a>
+</br>
+
+   A fully functional AI Powered Telegram bot.
+
+ 🦀  
+</div>
 
 ## Setup guide
 1. Install Rust with [rustup](http://rustup.rs/).
