@@ -17,8 +17,7 @@ You can either:
 You need to specify the personality of the bot as well as its criteria when mitigating an argument.
 A size for the context of the N last messages of the chat group is also needed.
 
-For a detailed example go to [TelitairoBot]
-
+For a detailed example go to [TelitairoBot](https://docs.rs/telitairos-bot/latest/telitairos_bot/struct.TelitairoBot.html)
 ### Example
 
 ```
