@@ -1,13 +1,16 @@
 # A fully functional AI Powered Telegram bot
 
 ## Setup guide
-### Add environment variables
+1. Install Rust with [rustup](http://rustup.rs/).
+2. Create a Telegram bot with [@BotFather](https://t.me/botfather) and get the token
+3. Create an [OpenAI API Platform account](https://openai.com/api/) and get both API Token and Organization Id
+4. Add environment variables
 ```bash
 - TELOXIDE_TOKEN= "/* Your Telegram Bot API Key */"
 - OPENAI_API_KEY= "/* Your OpenAI API Key */"
 - OPENAI_ORG_ID= "/* Your OpenAI Organization ID */"
 ```
-### Put these lines into your Cargo.toml
+5. Put these lines into your Cargo.toml
 ```toml
 [dependencies]
 telitairos-bot = "0.1.1"
