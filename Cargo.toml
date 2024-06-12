@@ -1,5 +1,6 @@
 [package]
 name = "telitairos-bot"
+description = "A fully funcional AI Powered assistant Telegram Bot"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
