@@ -23,7 +23,6 @@ pub async fn handle_ai_commands(
                 Ok(response) => response,
                 Err(err) => format!("Error getting an answer from OpenAI: {err}"),
             };
-
             bot.send_message(msg.chat.id, answer).await?;
         }
         AiCommand::Mediate => {

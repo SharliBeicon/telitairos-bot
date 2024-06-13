@@ -64,7 +64,7 @@ pub async fn mediate(
     let client = init_gpt_client()?;
     let request = CreateChatCompletionRequestArgs::default()
         .model("gpt-4o")
-        .max_tokens(32768u16)
+        .max_tokens(4096u16)
         .messages(vec![
             ChatCompletionRequestSystemMessageArgs::default()
                 .content(telitairo_bot.personality)

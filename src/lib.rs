@@ -98,18 +98,18 @@ impl TelitairoBot {
         let bot = Bot::from_env();
         let buffer_store: types::BufferStore = Arc::new(RwLock::new(HashMap::new()));
 
-        let handler = dptree::entry()
+        let handler = Update::filter_message()
             .branch(
-                Update::filter_message()
-                    .filter_command::<admin::AdminCommand>()
-                    .endpoint(admin::handle_admin_commands),
-            )
-            .branch(
-                Update::filter_message()
+                dptree::entry()
                     .filter_command::<ai::AiCommand>()
                     .endpoint(ai::handle_ai_commands),
             )
-            .branch(Update::filter_message().endpoint(bot::handle_messages));
+            .branch(
+                dptree::entry()
+                    .filter_command::<admin::AdminCommand>()
+                    .endpoint(admin::handle_admin_commands),
+            )
+            .branch(dptree::endpoint(handle_messages));
 
         Dispatcher::builder(bot, handler)
             .dependencies(dptree::deps![buffer_store, self.clone()])

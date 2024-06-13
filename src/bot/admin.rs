@@ -33,7 +33,7 @@ pub async fn handle_admin_commands(
 ) -> ResponseResult<()> {
     match cmd {
         AdminCommand::Help => {
-            bot.send_message(msg.chat.id, all_commands_string())
+            bot.send_message(msg.chat.id, all_command_descriptions())
                 .parse_mode(ParseMode::MarkdownV2)
                 .await?;
         }

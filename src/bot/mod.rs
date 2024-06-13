@@ -28,9 +28,9 @@ pub async fn handle_messages(
     Ok(())
 }
 
-pub fn all_commands_string() -> String {
+pub fn all_command_descriptions() -> String {
     let admin_command_descriptions = admin::AdminCommand::descriptions();
     let ai_command_descriptions = ai::AiCommand::descriptions();
 
-    format!("👮 🚨{admin_command_descriptions}\n\n\n🦀 🤖{ai_command_descriptions}")
+    format!("👮🚨{admin_command_descriptions}\n\n\n🦀 🤖{ai_command_descriptions}")
 }
