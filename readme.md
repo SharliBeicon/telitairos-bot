@@ -49,7 +49,16 @@ TelitairoBot struct implements Default trait, so you can start a bot with a gene
 by just doing this:
 
 ```rust
-let telitairo_bot: TelitairoBot = Default::default();
+let telitairo_bot = TelitairoBot::default();
+```
+
+Or partially initialize it like this:
+
+```rust
+let telitairo_bot = TelitairoBot {
+  personality: String::from("You are a Victorian era, tea addicted assistant"),
+  ..Default::default(),
+}
 ```
 
 If you want to set your own parameters, you need to specify the personality of the bot as well as its criteria when mitigating an argument.
