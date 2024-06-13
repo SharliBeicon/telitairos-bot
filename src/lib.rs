@@ -49,8 +49,10 @@ mod bot;
 mod gpt;
 mod types;
 
+use crate::bot::*;
 use std::collections::HashMap;
 use std::sync::Arc;
+use teloxide::dispatching::{HandlerExt, UpdateFilterExt};
 use teloxide::prelude::*;
 use teloxide::{dptree, Bot};
 use tokio::sync::RwLock;
@@ -100,8 +102,13 @@ impl TelitairoBot {
         let handler = dptree::entry()
             .branch(
                 Update::filter_message()
-                    .filter_command::<bot::Command>()
-                    .endpoint(bot::handle_commands),
+                    .filter_command::<ai::AiCommand>()
+                    .endpoint(ai::handle_ai_commands),
+            )
+            .branch(
+                Update::filter_message()
+                    .filter_command::<admin::AdminCommand>()
+                    .endpoint(admin::handle_admin_commands),
             )
             .branch(Update::filter_message().endpoint(bot::handle_messages));
 
