@@ -1,13 +1,9 @@
-use crate::{gpt, types, TelitairoBot};
-use teloxide::{prelude::*, utils::command::BotCommands};
+use crate::*;
 
 #[derive(BotCommands, Clone)]
-#[command(
-    rename_rule = "lowercase",
-    description = "These commands are supported"
-)]
+#[command(rename_rule = "lowercase", description = "Supported AI Commands")]
 pub enum AiCommand {
-    #[command(description = "Ask the bot a question.")]
+    #[command(description = "Ask the bot a question")]
     Ask(String),
 
     #[command(description = "Ask the bot to mediate a discussion")]

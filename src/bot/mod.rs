@@ -3,7 +3,7 @@ pub mod ai;
 
 use crate::{types, TelitairoBot};
 use std::collections::VecDeque;
-use teloxide::prelude::*;
+pub use teloxide::{prelude::*, utils::command::BotCommands};
 
 pub async fn handle_messages(
     buffer_store: types::BufferStore,
@@ -26,4 +26,11 @@ pub async fn handle_messages(
     }
 
     Ok(())
+}
+
+pub fn all_commands_string() -> String {
+    let admin_command_descriptions = admin::AdminCommand::descriptions();
+    let ai_command_descriptions = ai::AiCommand::descriptions();
+
+    format!("👮 🚨{admin_command_descriptions}\n\n\n🦀 🤖{ai_command_descriptions}")
 }
