@@ -1,7 +1,7 @@
 [package]
 name = "telitairos-bot"
 description = "A fully funcional AI Powered assistant Telegram Bot"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 keywords = ["ai", "telegram", "bot", "admin", "chatbot"]
@@ -10,9 +10,9 @@ exclude = ["src/main.rs"]
 
 [dependencies]
 async-openai = "0.23.2"
-
 teloxide = { version = "0.12", features = ["macros"] }
 log = "0.4"
 pretty_env_logger = "0.4"
 tokio = { version =  "1.38", features = ["rt-multi-thread", "macros"] }
 string-builder = "0.2.0"
+chrono = "0.4.38"

@@ -38,7 +38,12 @@ tokio = { version =  "1.8", features = ["rt-multi-thread", "macros"] }
 ```
 
 ## Supported commands
-You can either:
+You can do either:
+
+### 👮🚨 ADMIN Commands
+- `/mute X {h/m/s/p}` -> Mute an User from the Chat Group the selected time. 'p' is for 'permanent'
+- `/ban X {h/m/s/p}` -> Ban an User from the Chat Group the selected time. 'p' is for 'permanent'
+### 🦀 AI Commands
 - `/ask` for a specified question.
 - `/mediate` to read the last N messages of a chat group and mitigate an argument.
 
