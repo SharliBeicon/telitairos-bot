@@ -14,7 +14,7 @@
 
    A fully functional AI Powered Telegram bot.
 
- 🦀  
+ 🦀🤖  
 </div>
 
 ## Setup guide
@@ -43,7 +43,7 @@ You can do either:
 ### 👮🚨 ADMIN Commands
 - `/mute X {h/m/s/p}` -> Mute an User from the Chat Group the selected time. 'p' is for 'permanent'
 - `/ban X {h/m/s/p}` -> Ban an User from the Chat Group the selected time. 'p' is for 'permanent'
-### 🦀 AI Commands
+### 🦀🤖 AI Commands
 - `/ask` for a specified question.
 - `/mediate` to read the last N messages of a chat group and mitigate an argument.
 
