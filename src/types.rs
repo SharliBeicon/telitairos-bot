@@ -16,7 +16,7 @@ pub type BufferStore = Arc<RwLock<HashMap<ChatId, VecDeque<Message>>>>;
 
 pub type TimeAmount = u8;
 
-#[derive(PartialEq, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum UnitOfTime {
     Seconds,
     Minutes,
@@ -34,5 +34,23 @@ impl FromStr for UnitOfTime {
             "p" => Ok(UnitOfTime::Permanent),
             _ => Err("Allowed units: h, m, s, p"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn conversion_ok() {
+        let uot: UnitOfTime = UnitOfTime::from_str("h").expect("Failed to convert");
+        assert_eq!(uot, UnitOfTime::Hours);
+    }
+
+    #[test]
+    fn conversion_nok() {
+        let result = UnitOfTime::from_str("x");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Allowed units: h, m, s, p");
     }
 }

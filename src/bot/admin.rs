@@ -119,3 +119,34 @@ fn calc_time(time_amount: types::TimeAmount, unit_of_time: types::UnitOfTime) ->
         types::UnitOfTime::Permanent => Some(Duration::max_value()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::*;
+    use chrono::Duration;
+
+    #[test]
+    fn calc_time_seconds() {
+        let result = calc_time(10, UnitOfTime::Seconds);
+        assert_eq!(result, Some(Duration::seconds(10)));
+    }
+
+    #[test]
+    fn calc_time_minutes() {
+        let result = calc_time(10, UnitOfTime::Minutes);
+        assert_eq!(result, Some(Duration::seconds(600)));
+    }
+
+    #[test]
+    fn calc_time_hours() {
+        let result = calc_time(2, UnitOfTime::Hours);
+        assert_eq!(result, Some(Duration::seconds(7200)));
+    }
+
+    #[test]
+    fn calc_time_permanent() {
+        let result = calc_time(0, UnitOfTime::Permanent);
+        assert_eq!(result, Some(Duration::max_value()));
+    }
+}

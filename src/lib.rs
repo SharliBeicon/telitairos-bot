@@ -6,7 +6,8 @@
 //! - `/mediate` to read the last N messages of a chat group and mitigate an argument.
 //!
 //! ## Environment variables needed
-//! ```
+//!
+//! ```bash
 //! - TELOXIDE_TOKEN= "/* Your Telegram Bot API Key */"
 //! - OPENAI_API_KEY= "/* Your OpenAI API Key */"
 //! - OPENAI_ORG_ID= "/* Your OpenAI Organization ID */"
@@ -25,25 +26,25 @@
 //! by just doing this:
 //!
 //! ```
+//! # use telitairos_bot::TelitairoBot;
 //! let telitairo_bot: TelitairoBot = Default::default();
 //! ```
 //!
 //! But if you want to set your own Bot's personality you can use the `new()` function like this:
 //!
 //! ```
-//! #[tokio::main]
-//! async fn main() {
-//!    pretty_env_logger::init();
-//!    log::info!("Starting bot");
+//! # use telitairos_bot::TelitairoBot;
+//! /* #[tokio::main] */
+//! /*async*/ fn main() {
+//! let telitairo_bot = TelitairoBot::new(
+//!     String::from("personality"),
+//!     String::from("mediation criteria"),
+//!     200 /* buffer size */,
+//! );
 //!
-//!    let telitairo_bot = TelitairoBot::new(
-//!        String::from(/*Personality */),
-//!        String::from(/* Mediation criteria */),
-//!        /*size */,
-//!    );
-//!
-//!    telitairo_bot.dispatch().await;
-//! }
+//! /* telitairo_bot.dispatch().await; */
+//! # }
+//! ```
 //!
 mod bot;
 mod gpt;
@@ -57,19 +58,19 @@ use teloxide::{dptree, Bot};
 use tokio::sync::RwLock;
 
 /// Defines the bot behavior
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TelitairoBot {
     /// String to define the bot personality, a descriptive short prompt.
     ///
     /// # Example
-    /// ```
+    /// ```bash
     /// "You are a virtual assistant with a touch of acid humour and you love potatoes"
     /// ```
     pub personality: String,
     /// String to define the bot action when `/mediate` command is sent. descriptive short prompt.
     ///
     /// # Example
-    /// ```
+    /// ```bash
     /// "Take the messages, search for possible discussions and choose one side"
     /// ```
     pub mediate_query: String,
@@ -134,5 +135,29 @@ impl Default for TelitairoBot {
             mediate_query: types::DEFAULT_MEDIATION_QUERY.to_string(),
             buffer_size: types::DEFAULT_BUFFER_SIZE,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_and_new() {
+        let telitairo_default = TelitairoBot::default();
+        let telitairo_partially_default = TelitairoBot {
+            buffer_size: 200,
+            ..Default::default()
+        };
+        let telitairo_new = TelitairoBot::new(
+            String::from(
+                "You are a virtual assistant with a touch of acid humour and you love potatoes",
+            ),
+            String::from("Take the messages, search for possible discussions and choose one side"),
+            200,
+        );
+
+        assert_eq!(telitairo_default, telitairo_new);
+        assert_eq!(telitairo_partially_default, telitairo_new);
     }
 }
