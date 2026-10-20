@@ -65,6 +65,37 @@ From this repository, `cargo run --locked` starts the default bot once the
 environment is configured. This command contacts Telegram and requires real
 credentials; the tests below do not.
 
+### Deploy with Coolify
+
+1. Create a Coolify application from this repository and select the **Dockerfile**
+   build pack. Set **Base Directory** to `/` and **Dockerfile Location** to
+   `/Dockerfile`.
+2. Add `TELOXIDE_TOKEN` and `OPENAI_API_KEY` as **runtime-only** environment
+   variables, not build arguments. Optionally set `OPENAI_MODEL` (default:
+   `gpt-6-luna`), `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, or a trusted
+   `OPENAI_BASE_URL`. Do not commit a credentials file. The image defaults to
+   `RUST_LOG=info`; avoid HTTP/SDK debug logging.
+3. Clear any prefilled domain and **Ports Exposes**, leave **Ports Mappings**
+   empty, and disable HTTP health checks. This is an outbound Telegram
+   long-polling worker with no HTTP listener or exposed ports.
+4. Under advanced settings, select **Container naming: Consistent name (no rolling
+   updates)**. Run only **one instance per Telegram bot token**, including outside
+   Coolify, so deployments do not overlap Telegram pollers. Deploy the application.
+
+The multi-stage image builds the locked dependencies with Rust 1.96 and runs the
+binary as a non-root user on Debian Bookworm with TLS certificates and OpenSSL.
+It uses `SIGINT` for the bot's graceful shutdown handler. No persistent volume is
+needed: conversation history is in memory and is lost on restart or redeployment.
+
+To check the image build locally without credentials:
+
+```sh
+docker build -t telitairos-bot:local .
+```
+
+See Coolify's [Dockerfile build documentation](https://coolify.io/docs/applications/builds/dockerfile)
+and [environment variable settings](https://coolify.io/docs/applications/configuration/environment-variables).
+
 ### Use as a library
 
 ```toml

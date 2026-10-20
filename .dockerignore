@@ -1,0 +1,9 @@
+.git
+.github
+.codegraph
+target
+.env
+.env.*
+.aws
+.ssh
+.DS_Store
