@@ -1,4 +1,4 @@
-//! Group-only access control, applied before command routing or history collection.
+//! Limit access to allowed groups before processing commands or collecting history.
 
 use crate::types::BufferStore;
 use std::{collections::HashSet, env, sync::Arc};
@@ -51,7 +51,7 @@ impl GroupAllowlist {
 async fn reject(bot: &Bot, store: &BufferStore, chat: &Chat, present: bool) {
     store.write().await.remove(&chat.id);
     if present && !chat.is_private() && bot.leave_chat(chat.id).await.is_err() {
-        // A failed departure must never grant access. Retry on a later update.
+        // If the bot cannot leave, keep blocking access. Retry when another update arrives.
         log::warn!("Could not leave an unauthorized chat; its updates remain blocked");
     }
 }

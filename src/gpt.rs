@@ -111,13 +111,13 @@ impl Ai {
                 return AI_FAILURE.to_owned();
             }
         };
-        // Bound the whole operation, including the client's rate-limit retries.
+        // Limit the total time, including retries after the provider rejects too many requests.
         match tokio::time::timeout(Duration::from_secs(60), self.client.chat().create(request))
             .await
         {
             Ok(Ok(response)) => output(&response).unwrap_or(AI_FAILURE).to_owned(),
             Ok(Err(_)) => {
-                // Provider errors can contain request content or credentials; never print them.
+                // Never print provider errors. They can contain request content or credentials.
                 log::warn!("AI provider request failed");
                 AI_FAILURE.to_owned()
             }
@@ -181,7 +181,7 @@ fn transcription_request(
     filename: String,
     bytes: Vec<u8>,
 ) -> Result<CreateTranscriptionRequest, OpenAIError> {
-    // No personality, language override or translation prompt: preserve the spoken language.
+    // Keep the spoken language. Do not apply personality, language, or translation instructions.
     CreateTranscriptionRequestArgs::default()
         .model(TRANSCRIPTION_MODEL)
         .file(AudioInput::from_vec_u8(filename, bytes))
@@ -189,7 +189,7 @@ fn transcription_request(
 }
 
 fn transcription_output(bytes: &[u8]) -> Option<String> {
-    // Only text is required; some valid responses omit the SDK's mandatory usage field.
+    // Read only the required text. Some valid responses omit the usage field that the SDK requires.
     let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
     value
         .get("text")?
@@ -255,7 +255,7 @@ fn request(
         .model(model)
         .max_completion_tokens(if history { 8192u32 } else { 4096u32 })
         .messages(messages);
-    // Arbitrary Chat Completions overrides may not support reasoning parameters.
+    // Other Chat Completions models do not all support reasoning parameters.
     if model == DEFAULT_MODEL {
         builder.reasoning_effort(ReasoningEffort::Low);
     }

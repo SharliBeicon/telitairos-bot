@@ -76,18 +76,53 @@ fn malformed_command_usage(text: &str, username: &str, capacity: usize) -> Optio
 pub fn all_command_descriptions() -> String {
     format!(
         concat!(
-            "👮🚨{}\n\n🦀 🤖{}\n\n",
-            "Las respuestas se dan en español, salvo /transcript, que conserva el idioma del audio sin traducir ni aplicar la personalidad. Cada fragmento responde al audio original; si se ha borrado, se intenta entregar sin respuesta. La descarga de /transcript tiene un límite exterior de 60 segundos, pero el cliente HTTP puede interrumpir antes (17 segundos por petición de forma predeterminada). La transcripción tiene un límite de 120 segundos.\n\n",
-            "/ask lee enlaces compartidos y el mensaje respondido. /summary y /mediate también leen enlaces y adjuntos del historial seleccionado: páginas públicas, imágenes JPEG/PNG/WebP, PDF, archivos de texto UTF-8 y audio o voz mediante transcripción. El contenido se descarga al ejecutar el comando y se puede enviar a OpenAI, con coste adicional. Informa antes a los participantes. No se analizan vídeos ni se ejecuta JavaScript.\n\n",
-            "Se intentan leer hasta 8 recursos distintos por comando. Límites: 20 MB por archivo de Telegram, 2 MB por URL, 6.000 caracteres extraídos por recurso y 24.000 en total. La lectura dispone de hasta 180 segundos en total antes de generar la respuesta. Se avisa del contenido no leído u omitido. Se bloquean URLs a redes privadas o reservadas.\n\n",
-            "/mediate [N] [objetivo] y /summary [N] usan por defecto todo el historial guardado disponible. N debe estar entre 1 y la capacidad del historial configurada; si hay menos mensajes, se usan los disponibles. No se recupera historial de Telegram; el contexto enviado se limita a 50.000 caracteres. El primer elemento con apariencia numérica se reserva para N. Los objetivos complementan los criterios de mediación configurados. La mediación representa las posturas con imparcialidad; el resumen usa la personalidad configurada sin inventar información. Ejemplos: /mediate 50 Ayúdanos a acordar un plazo realista; /summary 50. /summary no admite texto adicional. Unidades de moderación: h (horas), m (minutos), s (segundos), p (permanente)."
+            "{}\n\n{}\n\n",
+            "Idioma y acceso\n",
+            "Las respuestas se dan en español. Solo puedes usar el bot en los grupos permitidos.\n",
+            "/transcript conserva el idioma del audio. No traduce ni aplica la personalidad del bot.\n\n",
+            "Historial\n",
+            "En /mediate [N] [objetivo] y /summary [N], N indica cuántos mensajes recientes usar. ",
+            "N debe estar entre 1 y la capacidad del historial configurada. Si hay menos mensajes, se usan los disponibles. ",
+            "Si omites N, se usa todo el historial guardado disponible. El contexto tiene un límite de 50.000 caracteres. ",
+            "El bot no recupera mensajes antiguos de Telegram. El historial se comparte entre los temas del grupo y se borra al reiniciar.\n",
+            "Si el primer elemento empieza por un número o un signo, el bot lo interpreta como N. ",
+            "Si tu objetivo empieza por un número, escribe una palabra antes. ",
+            "El objetivo se añade a los criterios de mediación configurados, no los sustituye. ",
+            "La mediación trata las posturas con imparcialidad. El resumen usa la personalidad configurada sin inventar información. ",
+            "/summary no admite un objetivo ni texto adicional.\n",
+            "Ejemplos:\n/mediate 50 Ayúdanos a acordar un plazo realista\n/summary 50\n\n",
+            "Enlaces y archivos\n",
+            "/ask lee los enlaces compartidos y el mensaje al que respondes. ",
+            "/summary y /mediate también leen enlaces y adjuntos de los mensajes seleccionados. ",
+            "Se admiten páginas públicas, imágenes JPEG/PNG/WebP, PDF, archivos de texto UTF-8 y audio o voz mediante transcripción. ",
+            "El bot descarga el contenido al ejecutar el comando. No analiza vídeos ni ejecuta JavaScript.\n",
+            "Cada comando intenta leer hasta 8 recursos distintos. Límites: 20 MB por archivo de Telegram y 2 MB por URL. ",
+            "Se extraen hasta 6.000 caracteres por recurso y 24.000 en total. La lectura tiene un límite total de 180 segundos. ",
+            "El bot avisa si no puede leer contenido o si lo omite. Bloquea enlaces a redes privadas o reservadas.\n\n",
+            "Audio\n",
+            "Responde al audio con /transcript, sin argumentos. Cada parte del resultado responde al audio original. ",
+            "Si el audio se borra, el bot intenta enviar el resultado sin enlazarlo al mensaje. ",
+            "La descarga tiene un límite total de 60 segundos. El cliente HTTP puede detenerla antes: su límite predeterminado es de 17 segundos por petición. ",
+            "La transcripción tiene un límite de 120 segundos.\n\n",
+            "Moderación\n",
+            "Responde al mensaje del usuario al que quieras aplicar la acción. Necesitas ser propietario o administrador con permiso para restringir miembros. ",
+            "El bot también necesita ese permiso. Envía el comando desde tu cuenta personal, no como administrador anónimo ni como canal. ",
+            "N debe estar entre 0 y 255. Unidades: h (horas), m (minutos), s (segundos), p (permanente). ",
+            "Las acciones temporales duran al menos 60 segundos. Con p, el valor de N no se usa. ",
+            "En grupos básicos solo se permiten expulsiones permanentes. /mute, /unmute y /unban requieren un supergrupo. ",
+            "/unmute restaura los permisos predeterminados del grupo. /unban permite volver con una invitación, pero no añade al usuario.\n",
+            "Ejemplos:\n/mute 10 m\n/ban 0 p\n\n",
+            "Privacidad y coste\n",
+            "Informa a los participantes antes de usar los comandos de IA. El texto, los nombres de autores y los archivos seleccionados se pueden enviar a OpenAI. ",
+            "Para /transcript, informa también a quien habla en el audio. Cualquier miembro de un grupo permitido puede usar estos comandos y generar costes. ",
+            "No hay cuotas por usuario ni controles de gasto."
         ),
         admin::AdminCommand::descriptions(),
         ai::AiCommand::descriptions()
     )
 }
 
-/// Split conservatively by UTF-16 units; every byte of the original is retained.
+/// Split text within the UTF-16 limit without losing any original bytes.
 fn split_text(text: &str) -> Vec<&str> {
     let mut chunks = Vec::new();
     let mut rest = text;
@@ -167,8 +202,8 @@ async fn finish_rendered(
         return Err(error);
     }
     if edit.is_err() {
-        // The placeholder can be deleted while the paid operation is in progress.
-        // Keep the answer even if Telegram no longer permits editing that message.
+        // Someone can delete the notice during the paid operation.
+        // Keep the answer even if Telegram no longer allows edits to that message.
         log::warn!("Could not edit AI placeholder; sending the answer as new messages");
     }
     for chunk in chunks.iter().skip(usize::from(edit.is_ok())) {
@@ -275,7 +310,7 @@ async fn send_chunk_entities(
     text: &str,
     entities: &[teloxide::types::MessageEntity],
 ) -> ResponseResult<MessageId> {
-    // Retry rate limits once; discard formatting only if Telegram rejects the entities.
+    // Retry once after a request limit. Drop formatting only if Telegram rejects the entities.
     let mut use_entities = !entities.is_empty();
     let mut rate_retried = false;
     for _ in 0..3 {
@@ -772,6 +807,24 @@ mod tests {
         ] {
             assert!(help.contains(expected), "{expected}");
         }
+    }
+
+    #[test]
+    fn spanish_help_explains_access_privacy_and_moderation() {
+        let help = all_command_descriptions();
+        for expected in [
+            "Solo puedes usar el bot en los grupos permitidos",
+            "se borra al reiniciar",
+            "Informa a los participantes",
+            "No hay cuotas por usuario ni controles de gasto",
+            "Envía el comando desde tu cuenta personal",
+            "En grupos básicos solo se permiten expulsiones permanentes",
+            "No traduce ni aplica la personalidad",
+        ] {
+            assert!(help.contains(expected), "{expected}");
+        }
+        assert!(!help.contains('👮'));
+        assert!(!help.contains('🤖'));
     }
 
     #[test]

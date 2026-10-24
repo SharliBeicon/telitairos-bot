@@ -1,4 +1,4 @@
-//! Bounded, on-demand reading of explicitly shared links and Telegram attachments.
+//! Read shared links and Telegram attachments only when needed, within fixed limits.
 
 mod twitter;
 
@@ -233,7 +233,7 @@ async fn telegram_bytes(bot: &Bot, meta: &FileMeta) -> Result<Vec<u8>, &'static 
     Ok(bytes)
 }
 
-// Allow only ordinary public unicast addresses. Reject mixed public/private DNS answers too.
+// Allow only public addresses for individual hosts. Reject DNS results that mix public and private addresses.
 fn public_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => {
@@ -253,7 +253,7 @@ fn public_ip(ip: IpAddr) -> bool {
         }
         IpAddr::V6(ip) => {
             let segments = ip.segments();
-            // Exclude transition, special-purpose and documentation ranges.
+            // Block address ranges for protocol transitions, special purposes, and documentation.
             segments[0] & 0xe000 == 0x2000
                 && segments[0] != 0x2002
                 && !(segments[0] == 0x2001 && (segments[1] < 0x0200 || segments[1] == 0x0db8))
@@ -306,7 +306,7 @@ async fn web_bytes(raw: &str) -> Result<(String, Vec<u8>), &'static str> {
         if addresses.is_empty() || addresses.iter().any(|address| !public_ip(address.ip())) {
             return Err("Contenido no leído: dirección de red privada o reservada bloqueada.");
         }
-        // Pin the validated resolution; no proxies, automatic redirects, cookies or ambient credentials.
+        // Use only the approved DNS addresses. Disable proxies, automatic redirects, cookies, and inherited credentials.
         let client = reqwest::Client::builder()
             .no_proxy()
             .redirect(Policy::none())
@@ -427,7 +427,7 @@ async fn read_source(bot: &Bot, ai: &Ai, source: &Source) -> Result<String, &'st
                 let parsed = web_url(url)?;
                 validate_url(&parsed)?;
                 if let Some(id) = twitter::post_id(&parsed) {
-                    // Use the documented data endpoint, not the browser/embed redirect.
+                    // Use the documented data endpoint, not the redirect for browsers or embedded posts.
                     let (_, bytes) =
                         web_bytes(&format!("https://api.fxtwitter.com/2/status/{id}")).await?;
                     return twitter::post_text(&bytes, id);
@@ -480,7 +480,7 @@ async fn read_source(bot: &Bot, ai: &Ai, source: &Source) -> Result<String, &'st
     }
 }
 
-/// Work on a snapshot: never hold the history lock across downloads or provider calls.
+/// Use a copy of the history. Release the history lock before downloads or provider calls.
 pub(crate) async fn enrich(
     bot: &Bot,
     ai: &Ai,
@@ -490,7 +490,7 @@ pub(crate) async fn enrich(
     let mut seen: Vec<(Source, Result<String, &'static str>)> = Vec::new();
     let mut remaining_text = 24_000usize;
     let mut report = ReadReport::default();
-    // Spend the bounded reading budget on the newest messages first.
+    // Read the newest messages first before the shared reading limit runs out.
     for message in messages.iter_mut().rev() {
         for source in &message.sources {
             let result = if remaining_text < 200 || tokio::time::Instant::now() >= deadline {

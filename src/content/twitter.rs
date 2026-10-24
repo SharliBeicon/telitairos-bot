@@ -1,4 +1,4 @@
-//! FxEmbed API v2 reader for explicitly shared FixupX and FxTwitter status links.
+//! Read shared FixupX and FxTwitter status links through FxEmbed API v2.
 
 use reqwest::Url;
 use serde_json::Value;

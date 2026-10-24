@@ -8,15 +8,17 @@ use crate::{
 #[command(rename_rule = "lowercase", description = "Comandos de IA")]
 pub enum AiCommand {
     #[command(
-        description = "Preguntar al bot: /ask <pregunta>; lee enlaces y el mensaje respondido (incluidos adjuntos)"
+        description = "Preguntar al bot: /ask <pregunta>. Lee los enlaces y el mensaje al que respondes, incluidos sus adjuntos."
     )]
     Ask(String),
-    #[command(description = "Mediar: /mediate [N] [objetivo]; últimos N mensajes guardados")]
+    #[command(
+        description = "Mediar: /mediate [N] [objetivo]. Usa los últimos N mensajes guardados."
+    )]
     Mediate(String),
-    #[command(description = "Resumir: /summary [N]; últimos N mensajes guardados")]
+    #[command(description = "Resumir: /summary [N]. Usa los últimos N mensajes guardados.")]
     Summary(String),
     #[command(
-        description = "Transcribir en el idioma original: responde a un audio o nota de voz con /transcript (máximo 20 MB; se envía a OpenAI)."
+        description = "Transcribir en el idioma original: responde a un audio o nota de voz con /transcript, sin argumentos. Máximo 20 MB. El audio se envía a OpenAI."
     )]
     Transcript,
 }
@@ -46,7 +48,7 @@ pub(super) fn history_args(
             goal: None,
         });
     };
-    // Reserve digit/sign-prefixed tokens, including overflow and malformed numbers.
+    // Treat a first word that starts with a digit or sign as a count, even if invalid.
     let numeric = first.starts_with(|ch: char| ch.is_numeric() || ch == '+' || ch == '-');
     if numeric {
         if !first.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -186,7 +188,7 @@ async fn history_input(
     };
     messages.reverse();
     let mut messages: std::collections::VecDeque<_> = messages.into();
-    // Do not download resources from messages already excluded by the transcript cap.
+    // Do not download resources from messages already left out by the history text limit.
     let retained = types::transcript(&messages, None).lines().count();
     let original_count = messages.len();
     while messages.len() > retained {

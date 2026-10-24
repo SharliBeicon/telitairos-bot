@@ -12,19 +12,19 @@ pub enum AdminCommand {
     #[command(description = "Mostrar esta ayuda.")]
     Help,
     #[command(
-        description = "Silenciar en un supergrupo: responde con /mute N h/m/s/p (p = permanente; duración mínima de 60 segundos)."
+        description = "Silenciar: responde al mensaje del usuario con /mute N h/m/s/p. Solo supergrupos. Las acciones temporales duran al menos 60 segundos."
     )]
     Mute(types::TimeAmount, types::UnitOfTime),
     #[command(
-        description = "Expulsar: responde con /ban N h/m/s/p (p = permanente; temporal: solo supergrupos, mínimo 60 segundos)."
+        description = "Expulsar: responde al mensaje del usuario con /ban N h/m/s/p. Las expulsiones temporales requieren un supergrupo y duran al menos 60 segundos."
     )]
     Ban(types::TimeAmount, types::UnitOfTime),
     #[command(
-        description = "Permitir volver a entrar: responde con /unban en un supergrupo; no añade al usuario automáticamente."
+        description = "Permitir volver a entrar: responde al mensaje del usuario con /unban, sin argumentos. Solo supergrupos. No añade al usuario automáticamente."
     )]
     Unban,
     #[command(
-        description = "Restaurar los permisos predeterminados del supergrupo: responde con /unmute."
+        description = "Restaurar los permisos predeterminados del supergrupo: responde al mensaje del usuario con /unmute, sin argumentos."
     )]
     Unmute,
 }
@@ -62,7 +62,7 @@ pub async fn handle_admin_commands(
     if let Err(reason) = authorize(&bot, msg.chat.id, caller).await {
         return send_text(&bot, &msg, reason).await;
     }
-    // Compute immediately before sending, not from the incoming message's potentially stale date.
+    // Use the current time before sending. The command timestamp can be old.
     let expiry = match calc_time(amount, unit, Utc::now()) {
         Ok(expiry) => expiry,
         Err(reason) => return send_text(&bot, &msg, reason).await,
@@ -248,7 +248,7 @@ fn calc_time(
             types::UnitOfTime::Minutes => 60,
             types::UnitOfTime::Hours => 3600,
         };
-    // Telegram interprets <30 seconds and >366 days as permanent. Keep a network-delay margin.
+    // Telegram treats durations under 30 seconds or over 366 days as permanent. Allow for network delays.
     if !(60..=366 * 24 * 3600).contains(&seconds) {
         return Err("Las duraciones temporales deben ser de al menos 60 segundos y como máximo 366 días. Usa N (0–255) y h (horas), m (minutos), s (segundos) o p (permanente).");
     }

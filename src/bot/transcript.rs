@@ -24,7 +24,7 @@ fn source(command: &Message) -> Result<Source<'_>, &'static str> {
             &voice.file,
             audio_filename(
                 voice.mime_type.as_ref().map(|mime| mime.essence_str()),
-                // Voice has no filename. Only absent/generic MIME falls back to Ogg.
+                // Voice messages have no filename. Use Ogg only when the MIME type is missing or generic.
                 Some("voice.ogg"),
             )?,
         )
@@ -48,7 +48,7 @@ fn source(command: &Message) -> Result<Source<'_>, &'static str> {
 }
 
 fn check_size(size: u32) -> Result<(), &'static str> {
-    // Telegram uses this sentinel when the size is unknown. The stream is still bounded.
+    // Telegram uses this value for unknown sizes. The download still has a size limit.
     if size != u32::MAX && u64::from(size) > MAX_AUDIO_BYTES as u64 {
         Err(TOO_LARGE)
     } else {
@@ -68,7 +68,7 @@ pub(crate) fn audio_filename(
         Some("audio/ogg" | "application/ogg") => Some("ogg"),
         Some("audio/wav" | "audio/wave" | "audio/x-wav" | "audio/vnd.wave") => Some("wav"),
         Some("audio/webm") => Some("webm"),
-        // Generic/absent MIME metadata can be resolved from the filename extension.
+        // If the MIME type is missing or generic, use the filename extension to identify the format.
         None | Some("application/octet-stream") => None,
         Some(_) => return Err("Ese formato de audio no es compatible. Usa FLAC, MP3, MP4, MPEG, MPGA, M4A, OGG, WAV o WebM."),
     };
@@ -76,7 +76,7 @@ pub(crate) fn audio_filename(
         let extension = filename?.rsplit_once('.')?.1.to_ascii_lowercase();
         matches!(extension.as_str(), "flac" | "mp3" | "mp4" | "mpeg" | "mpga" | "m4a" | "ogg" | "wav" | "webm").then_some(extension)
     }).ok_or("No he podido identificar un formato de audio compatible. Usa un archivo con una extensión FLAC, MP3, MP4, MPEG, MPGA, M4A, OGG, WAV o WebM.")?;
-    // Never forward user-provided paths or filenames to the provider.
+    // Never send paths or filenames from users to the provider.
     Ok(format!("audio.{extension}"))
 }
 

@@ -1,109 +1,134 @@
 //! # Telitairos Bot 0.2.0
 //!
-//! A Telegram assistant with `/ask <question>`, `/mediate [N] [goal]`,
-//! `/summary [N]`, and `/help` for members of allowed groups. Mediation accepts a count, a goal, both,
-//! or neither; for example `/mediate 50 Ayúdanos a acordar un plazo realista`.
-//! Summary accepts only an optional count and faithfully covers facts, key points,
-//! decisions, and open questions, with factual constraints taking priority over personality.
-//! Both default to all available buffered history.
-//! Valid AI requests send a processing notice before downloads or model calls,
-//! then edit it with the result or operation error. Long results continue in new
-//! messages. Notices reply to the command, or to the original audio for `/transcript`.
-//! Failed edits fall back to new messages and attempted notice deletion, except
-//! when Telegram rate limits stop delivery. Failed notices stop paid processing.
-//! Chat AI commands read shared public URLs, images, PDF and UTF-8 text files,
-//! plus Telegram audio through transcription. `/ask` also reads the replied-to message.
-//! Resource references are buffered without downloads. Commands attempt up to eight
-//! distinct resources on demand, with a 180-second reading deadline before the answer.
-//! Downloads are limited to 20 MB from Telegram and 2 MB from the web. External text
-//! is capped at 6000 characters per resource and 24,000 per command before the final
-//! 50,000-character context cap. Failed readings and detected omissions produce notices.
-//! External content is untrusted. Public URL fetching blocks private/reserved networks,
-//! validates redirects and pins DNS results. It does not run JavaScript or analyze video.
-//! `N` selects the newest available messages and must be an integer from 1 to
-//! `buffer_size`; fewer available messages means using those available. Invalid
-//! counts (including overflow, negative, or malformed numeric-looking first tokens)
-//! are rejected. A numeric-looking first token is reserved for the count; start
-//! numeric mediation goals with words. Goals supplement configured mediation criteria.
-//! Administrators with restrict-members permission can reply to a user's message
-//! with `/mute N h/m/s/p` (supergroups only) or `/ban N h/m/s/p` (groups and
-//! supergroups; finite bans require a supergroup). `N` is 0–255; `p` means permanent, ignoring `N`. Finite durations
-//! must be at least 60 seconds, leaving a margin above Telegram's 30-second
-//! permanent-action threshold. Anonymous administrator commands are rejected.
-//! The bot also needs administrator restrict-members permission for moderation.
-//! `/unban` and `/unmute` take no arguments and require the same administrator and
-//! reply-target checks, in supergroups only. `/unban` lets a banned user rejoin via
-//! invitation or link; it never kicks an existing member or automatically adds anyone.
-//! `/unmute` restores a restricted current member's permissions to the supergroup
-//! defaults, not unrestricted permissions. Missing defaults deny the action.
+//! A Telegram assistant for members of allowed groups.
+//! Members can use `/ask <question>`, `/mediate [N] [goal]`, `/summary [N]`, and `/help`.
+//! Mediation accepts a count, a goal, both, or neither.
+//! For example, `/mediate 50 Ayúdanos a acordar un plazo realista` sets both.
+//! Summaries accept only an optional count and cover facts, key points, decisions, and open questions.
+//! Facts take priority over personality.
 //!
-//! Reply to an audio or voice message with `/transcript` (no arguments) to send its
-//! audio to OpenAI's dedicated `gpt-transcribe` model, independently of `OPENAI_MODEL`.
-//! The returned text replies to the original audio, in its topic when applicable,
-//! including every chunk of a long transcription. If the original message was deleted,
-//! delivery is allowed without a reply anchor. Speech retains its original language;
-//! personality and Spanish chat instructions do not apply. This is transcription, not
-//! translation or sarcastic paraphrasing, but model errors remain possible.
+//! The buffer is the message history that the bot keeps in memory.
+//! Mediation and summaries use all available buffered history by default.
+//! `N` selects the newest available messages and must be an integer from 1 to `buffer_size`.
+//! If fewer messages are available, the bot uses all available messages.
+//! It rejects invalid counts, including negative, malformed, and too large numbers.
+//! A first word that starts with a digit or sign counts as `N`.
+//!
+//! If a mediation goal starts with a number, put a word before that number.
+//! Goals add to the configured mediation criteria without replacing them.
+//! Valid AI requests send a processing notice before downloads or model calls.
+//! The bot replaces the notice with the result or an operation error.
+//! Long results continue in new messages.
+//! Notices reply to the command, or to the original audio for `/transcript`.
+//!
+//! If an edit fails, the bot sends new result messages and tries to delete the notice.
+//! Telegram request limits can stop delivery. If the initial notice fails, the bot stops paid processing.
+//! Chat AI commands read shared public URLs, images, PDF and UTF-8 text files, and Telegram audio through transcription.
+//! `/ask` also reads the message that you reply to.
+//! The bot stores resource references without downloading their contents.
+//!
+//! Each command attempts up to eight different resources when needed, within 180 seconds before the answer.
+//! Downloads have limits of 20 MB from Telegram and 2 MB from the web.
+//! Extracted text has limits of 6000 characters per resource and 24,000 per command.
+//! The final context has a 50,000-character limit.
+//! The bot adds notices for failed readings and detected omissions.
+//!
+//! The bot treats external content as untrusted information.
+//! It blocks private and reserved networks, examines redirects, and uses only approved DNS addresses.
+//! DNS maps hostnames to IP addresses.
+//! The bot does not run JavaScript or analyze video.
+//!
+//! Administrators with restrict-members permission can reply to a user message with `/mute N h/m/s/p` or `/ban N h/m/s/p`.
+//! Muting and temporary bans require a supergroup. Permanent bans also work in basic groups.
+//! `N` is an integer from 0 to 255. The unit `p` means permanent and ignores `N`.
+//! Temporary durations must be at least 60 seconds to allow for delays above the Telegram 30-second permanent-action threshold.
+//! The bot rejects anonymous administrator commands. The bot also needs administrator restrict-members permission.
+//!
+//! `/unban` and `/unmute` take no arguments and work only in supergroups.
+//! They use the same administrator and reply-target rules as mute and ban.
+//! `/unban` lets a banned user rejoin through an invitation or link.
+//! It never kicks current members or adds users automatically.
+//! `/unmute` restores a restricted current member to the default supergroup permissions, not unrestricted permissions.
+//! If the bot cannot read those defaults, it denies the action.
+//!
+//! Transcription converts speech to text. Reply to an audio or voice message with `/transcript`, without arguments.
+//! The bot sends the audio to `gpt-transcribe`, independent of `OPENAI_MODEL`.
+//! Each result message replies to the original audio, in its topic when applicable.
+//! If someone deletes the original message, the bot can deliver the result without a reply link.
+//! The result keeps the spoken language without personality, translation, or Spanish chat instructions.
+//! Model errors remain possible.
+//!
 //! Only Telegram audio and voice messages are supported, not documents or video.
-//! Supported formats are FLAC, MP3, MP4, MPEG, MPGA, M4A, OGG (including voice Opus),
-//! WAV and WebM, subject to provider support; there is no live format validation.
-//! Voice MIME types select the format too (including MP3/M4A); only absent or generic
-//! voice MIME metadata falls back to OGG. Unsupported MIME types are rejected.
-//! Downloads are limited to 20,000,000 bytes, checked against metadata and the stream,
-//! with a 60-second outer deadline. The default Telegram HTTP client's shorter
-//! 17-second per-request timeout (5-second connection timeout) can abort earlier.
-//! Audio stays in memory, with no temporary files or logs; transcription has a
-//! separate 120-second deadline including SDK retries. There is no audio duration
-//! cap or duration quota. Updates in each chat are processed sequentially, so
-//! transcription can delay later commands and messages in that chat, including moderation.
+//! Formats include FLAC, MP3, MP4, MPEG, MPGA, M4A, OGG (including voice Opus), WAV, and WebM, subject to provider support.
+//! These formats remain untested with live requests.
+//! A MIME type identifies a file format. Voice MIME types also select the format, including MP3 and M4A.
+//! If voice MIME information is absent or generic, the bot uses OGG.
+//! It rejects unsupported MIME types.
+//!
+//! Downloads have a 20,000,000-byte limit and a shared 60-second deadline for file information and download requests.
+//! The bot examines file information and bytes as they arrive.
+//! The default Telegram HTTP client has a shorter 17-second timeout per request and a 5-second connection timeout.
+//! It can stop the download earlier. Audio stays in memory without temporary files or logs.
+//! Transcription has a separate 120-second deadline, including retries by the SDK (software development kit).
+//!
+//! There is no audio duration limit or duration quota.
+//! The bot processes updates one at a time in each chat.
+//! Transcription can delay later commands and messages in that chat, including moderation.
 //!
 //! ## Configuration and privacy
 //!
-//! Required process environment: `TELOXIDE_TOKEN`, `OPENAI_API_KEY`, and `ALLOWED_GROUP_IDS`.
+//! Set `TELOXIDE_TOKEN`, `OPENAI_API_KEY`, and `ALLOWED_GROUP_IDS` in the bot process environment.
 //! `ALLOWED_GROUP_IDS` is a nonempty comma-separated list of negative group IDs.
-//! Access is checked before commands and history collection. Only listed groups and
-//! supergroups are allowed. Private messages are ignored. On an unauthorized group's
-//! membership update or message, the bot attempts to leave and clears its buffered history.
-//! Channels are also rejected. A failed departure never grants access. Missing or invalid
-//! configuration prevents startup. Existing groups are checked when their next update arrives.
-//! Restart after changing the list. Migrated supergroups need their new ID added explicitly.
+//! The bot examines access before commands and history collection. It allows only listed groups and supergroups.
+//! It ignores private messages and rejects channels.
+//! When an unauthorized group sends a membership update or message, the bot tries to leave and clears its buffered history.
+//! If the bot cannot leave, it still blocks access. Missing or invalid configuration prevents startup.
+//! The bot examines existing groups when their next update arrives.
+//! After you change the list, restart the bot. If a group becomes a supergroup, add its new ID explicitly.
 //! Bot replies and default prompts are in Spanish, including help and error feedback.
 //! A common language instruction also applies to custom personalities.
-//! `OPENAI_ORG_ID` is optional. `OPENAI_MODEL` defaults to `gpt-6.1-sol` and must support
-//! Chat Completions, with image/PDF inputs for those resources. Final chat answers have a
-//! 60-second deadline after resource reading. Never log credentials.
-//! Low reasoning effort is sent only for the exact default model; arbitrary overrides
-//! omit it. Completion budgets are 4096 tokens for questions and 8192 for history commands,
-//! including reasoning tokens. The default personality uses dry sarcasm and affectionate
-//! friend-group banter, allowing a brief rant when warranted, but puts truth, evidence,
-//! and uncertainty ahead of jokes or validation. Mediation avoids false balance and
-//! can draw sharp evidence-backed conclusions or help find actionable agreements.
-//! Summaries use the configured voice throughout, including integrated dry wit and
-//! affectionate sarcasm with the default personality, rather than only a closing joke;
-//! they never invent events or attribute the bot's commentary to participants and remain
-//! independent of mediation criteria and invocation-specific goals.
+//! `OPENAI_ORG_ID` is optional. `OPENAI_MODEL` defaults to `gpt-6.1-sol` and must support Chat Completions.
+//! It must also support image and PDF inputs to read those resources.
+//! Final chat answers have a 60-second deadline after resource reading. Never log credentials.
+//! Only the exact default model receives the low reasoning effort parameter. Other model names omit it.
+//! Tokens are units of text that models process.
+//! Completion limits are 4096 tokens for questions and 8192 for history commands, including reasoning tokens.
 //!
-//! Chat AI commands can send images, PDF files, audio and extracted website/file text to
-//! OpenAI. Mediation and summaries also send author names. Repeated commands reread resources
-//! and can incur additional charges. Website operators see requests from the bot server.
-//! Inform participants
-//! first. `/transcript` sends the replied-to audio to OpenAI and can incur costs;
-//! inform the speaker and participants before using it. To receive ordinary group messages, make the bot an administrator or
-//! disable Telegram privacy mode. Telegram does not deliver other bots' messages.
-//! The bot only knows messages delivered while it is running; it never fetches Telegram history.
+//! The default personality uses dry sarcasm and affectionate teasing among friends.
+//! It allows brief rants but puts facts, evidence, and admitted uncertainty before jokes or agreement.
+//! Mediation represents positions fairly without treating all claims as equally supported.
+//! It can draw firm conclusions from evidence or propose practical agreements.
+//! Summaries use the configured voice throughout, not only in a final joke.
+//! With the default personality, this includes dry humor and affectionate sarcasm.
 //!
-//! History is memory-only and per chat (shared across topics), retaining the newest
-//! `buffer_size` supported messages not handled as commands. Restarting clears it. Entries and
-//! history transcripts are capped at 50,000 Unicode characters. Transcript fields
-//! are quoted/escaped and retain newest whole messages; an oversized newest
-//! message keeps its author and newest text. There is no expiry, global chat-count bound, or
-//! spending quota. All members of allowed groups can invoke AI commands; monitor costs.
-//! Chat AI answers render basic Markdown as Telegram entities, including bold, italic,
-//! links and code, with formatting ranges adjusted for each chunk. Raw HTML remains
-//! literal. Transcriptions and mechanical feedback remain plain text. Replies are
-//! split at 4096 UTF-16 units (whitespace-only chunks skipped),
-//! and sent in the original topic only for actual topic messages. Rate-limit retries
-//! wait at most 30 seconds.
+//! Summaries never invent events or attribute the bot commentary to participants.
+//! They do not use mediation criteria or request-specific goals.
+//!
+//! Chat AI commands can send images, PDF files, audio, and extracted website or file text to OpenAI.
+//! Mediation and summaries also send author names. Repeated commands read resources again and can incur additional charges.
+//! Website operators see requests from the bot server. Inform participants before use.
+//! `/transcript` sends the selected audio to OpenAI and can incur costs.
+//! Inform the speaker and participants before you use it.
+//!
+//! To receive ordinary group messages, make the bot an administrator or disable Telegram privacy mode.
+//! Telegram does not deliver messages from other bots.
+//! The bot only knows messages delivered while it runs. It never fetches Telegram history.
+//!
+//! Each chat shares one in-memory history across its topics.
+//! It retains the newest `buffer_size` supported messages that the bot does not handle as commands.
+//! Restart clears it. Entries and history text have a 50,000-Unicode-character limit.
+//! The bot quotes fields and escapes special characters. It keeps the newest whole messages.
+//! If the newest message exceeds the limit, the bot keeps its author and newest text.
+//! There is no expiry, total chat limit, or spending quota.
+//!
+//! All members of allowed groups can use AI commands. Monitor costs.
+//! Chat AI answers use basic Markdown for bold, italic, links, and code.
+//! Telegram entities mark the formatted text ranges. The bot adjusts these ranges for each message part.
+//! Raw HTML stays literal. Transcriptions and status messages stay in plain text.
+//!
+//! Replies split at 4096 UTF-16 units. The bot skips parts that contain only whitespace.
+//! It sends replies in the original topic only for actual topic messages.
+//! Retries after Telegram request limits wait at most 30 seconds.
 //!
 //! ## Basic usage
 //!
@@ -140,31 +165,31 @@ use teloxide::dispatching::{HandlerExt, UpdateFilterExt};
 use teloxide::{dptree, Bot};
 use tokio::sync::RwLock;
 
-/// Defines the bot behavior
+/// Defines the bot personality, mediation criteria, and history capacity.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TelitairoBot {
-    /// Configurable voice for chat AI commands; summaries prioritize facts, transcription ignores it.
+    /// Sets the voice for chat AI commands. Summaries put facts first. Transcription ignores this field.
     ///
     /// # Example
     /// ```bash
     /// "Eres un asistente cercano, útil y respetuoso. Responde en español."
     /// ```
     pub personality: String,
-    /// String to define the bot action when `/mediate` command is sent. descriptive short prompt.
+    /// Sets the instructions that the bot uses for `/mediate`.
     ///
     /// # Example
     /// ```bash
     /// "Facilita un acuerdo neutral y propone próximos pasos concretos sin inventar pruebas."
     /// ```
     pub mediate_query: String,
-    /// Buffer capacity, size of the context for `/mediate` and `/summary`.
+    /// Sets the maximum number of saved messages for `/mediate` and `/summary`.
     ///
     /// `new` and `dispatch` panic if `buffer_size` is zero.
     pub buffer_size: usize,
 }
 
 impl TelitairoBot {
-    /// Creates a new bot with the selected parameters
+    /// Creates a bot with the selected personality, mediation criteria, and history capacity.
     ///
     /// # Panics
     /// Panics if either string is empty or `buffer_size` is zero.
@@ -178,11 +203,11 @@ impl TelitairoBot {
         }
     }
 
-    /// Listen for incoming messages and commands.
+    /// Listens for incoming messages and commands.
     ///
     /// # Panics
-    /// Panics if `buffer_size` is zero, required environment variables are missing
-    /// or empty, or the Telegram dispatcher cannot initialize.
+    /// Panics if `buffer_size` is zero or required environment variables are missing, empty, or invalid.
+    /// Also panics if the Telegram dispatcher cannot start.
     pub async fn dispatch(&self) {
         assert!(
             self.buffer_size > 0,
@@ -250,7 +275,7 @@ impl TelitairoBot {
     }
 }
 
-/// Default attributes for a sarcastic, truth-seeking friend-group assistant.
+/// Provides the default sarcastic personality, factual mediation criteria, and history capacity.
 impl Default for TelitairoBot {
     fn default() -> Self {
         TelitairoBot {
@@ -267,7 +292,7 @@ mod tests {
 
     #[tokio::test]
     async fn dispatcher_dependencies_validate_without_network() {
-        // build() type-checks every handler's injected dependencies, without dispatching.
+        // build() makes sure that each handler receives the required dependencies without starting the bot.
         let _dispatcher = TelitairoBot::default()
             .dispatcher_builder(
                 Bot::new("offline-placeholder"),

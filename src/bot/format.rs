@@ -1,4 +1,5 @@
-//! Convert CommonMark to Telegram entities, then split text and entity ranges together.
+//! Convert CommonMark to Telegram entities, which mark formatted text ranges.
+//! Split the text and its formatting ranges together.
 
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use teloxide::types::{MessageEntity, MessageEntityKind};
@@ -129,7 +130,7 @@ impl Rendered {
             entity.length = entity.length.min(length.saturating_sub(entity.offset));
             entity.length > 0
         });
-        // Telegram forbids other entities inside code/pre, even if Markdown nests them.
+        // Telegram forbids other formatting inside code/pre, even if Markdown includes it.
         let code: Vec<_> = output
             .entities
             .iter()

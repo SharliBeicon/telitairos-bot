@@ -69,8 +69,8 @@ pub(crate) fn escape_transcript_field(text: &str) -> String {
     escaped
 }
 
-/// Retain newest whole messages in chronological order with escaped attribution.
-/// Only an oversized newest message has its text shortened, never its author.
+/// Keep the newest whole messages in chronological order. Escape special characters in author and text fields.
+/// If the newest message exceeds the limit, shorten its text but keep its author.
 pub fn transcript(buffer: &VecDeque<BufferedMessage>, count: Option<usize>) -> String {
     let mut remaining = TRANSCRIPT_LIMIT;
     let mut lines = Vec::new();
@@ -84,7 +84,7 @@ pub fn transcript(buffer: &VecDeque<BufferedMessage>, count: Option<usize>) -> S
         let count = line.chars().count();
         if count > remaining {
             if lines.is_empty() {
-                // Keep escape sequences intact and retain the newest text characters.
+                // Keep escape sequences whole and preserve the newest text characters.
                 let mut budget = remaining.saturating_sub(prefix.chars().count() + 3);
                 let mut tail = Vec::new();
                 for ch in message.text.chars().rev() {
