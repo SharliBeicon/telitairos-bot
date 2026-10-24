@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod ai;
+mod format;
 pub(crate) mod transcript;
 
 use crate::{types, TelitairoBot};
@@ -137,11 +138,31 @@ async fn finish_pending(
     pending: MessageId,
     text: &str,
 ) -> ResponseResult<()> {
-    let mut chunks = sendable_chunks(text);
-    let first = chunks
-        .next()
-        .unwrap_or("No he recibido una respuesta válida. Inténtalo de nuevo.");
-    let edit = edit_chunk(bot, message.chat.id, pending, first).await;
+    finish_rendered(bot, message, pending, format::Rendered::plain(text)).await
+}
+
+async fn finish_markdown(
+    bot: &Bot,
+    message: &Message,
+    pending: MessageId,
+    text: &str,
+) -> ResponseResult<()> {
+    finish_rendered(bot, message, pending, format::Rendered::markdown(text)).await
+}
+
+async fn finish_rendered(
+    bot: &Bot,
+    message: &Message,
+    pending: MessageId,
+    rendered: format::Rendered,
+) -> ResponseResult<()> {
+    let mut chunks = rendered.chunks();
+    if chunks.is_empty() {
+        chunks.push(format::Rendered::plain(
+            "No he recibido una respuesta válida. Inténtalo de nuevo.",
+        ));
+    }
+    let edit = edit_chunk(bot, message.chat.id, pending, &chunks[0]).await;
     if let Err(error @ RequestError::RetryAfter(_)) = edit {
         return Err(error);
     }
@@ -149,27 +170,20 @@ async fn finish_pending(
         // The placeholder can be deleted while the paid operation is in progress.
         // Keep the answer even if Telegram no longer permits editing that message.
         log::warn!("Could not edit AI placeholder; sending the answer as new messages");
-        send_text_at(
-            bot,
-            message,
-            if text.trim().is_empty() { first } else { text },
-            Some(message.id),
-        )
-        .await?;
-        if bot.delete_message(message.chat.id, pending).await.is_err() {
-            log::warn!("Could not remove AI placeholder after fallback delivery");
-        }
-        return Ok(());
     }
-    for chunk in chunks {
-        send_chunk(
+    for chunk in chunks.iter().skip(usize::from(edit.is_ok())) {
+        send_chunk_entities(
             bot,
             message.chat.id,
             reply_thread(message),
             Some(message.id),
-            chunk,
+            &chunk.text,
+            &chunk.entities,
         )
         .await?;
+    }
+    if edit.is_err() && bot.delete_message(message.chat.id, pending).await.is_err() {
+        log::warn!("Could not remove AI placeholder after fallback delivery");
     }
     Ok(())
 }
@@ -183,14 +197,29 @@ fn edit_request(
     bot.edit_message_text(chat, pending, text)
 }
 
-async fn edit_chunk(bot: &Bot, chat: ChatId, pending: MessageId, text: &str) -> ResponseResult<()> {
-    for attempt in 0..2 {
-        match edit_request(bot, chat, pending, text).await {
+async fn edit_chunk(
+    bot: &Bot,
+    chat: ChatId,
+    pending: MessageId,
+    chunk: &format::Rendered,
+) -> ResponseResult<()> {
+    let mut use_entities = !chunk.entities.is_empty();
+    let mut rate_retried = false;
+    for _ in 0..3 {
+        let mut request = edit_request(bot, chat, pending, &chunk.text);
+        if use_entities {
+            request = request.entities(chunk.entities.clone());
+        }
+        match request.await {
             Err(RequestError::Api(teloxide::ApiError::MessageNotModified)) => return Ok(()),
-            Err(RequestError::RetryAfter(delay)) if attempt == 0 => {
+            Err(RequestError::Api(teloxide::ApiError::CantParseEntities(_))) if use_entities => {
+                use_entities = false;
+            }
+            Err(RequestError::RetryAfter(delay)) if !rate_retried => {
                 let Some(wait) = retry_wait(delay) else {
                     return Err(RequestError::RetryAfter(delay));
                 };
+                rate_retried = true;
                 tokio::time::sleep(wait).await;
             }
             result => return result.map(|_| ()),
@@ -235,14 +264,34 @@ async fn send_chunk(
     reply: Option<MessageId>,
     text: &str,
 ) -> ResponseResult<MessageId> {
-    // Retry the same chunk once on Telegram's explicit rate-limit response.
-    for attempt in 0..2 {
-        let request = text_request(bot, chat, thread, reply, text);
+    send_chunk_entities(bot, chat, thread, reply, text, &[]).await
+}
+
+async fn send_chunk_entities(
+    bot: &Bot,
+    chat: ChatId,
+    thread: Option<ThreadId>,
+    reply: Option<MessageId>,
+    text: &str,
+    entities: &[teloxide::types::MessageEntity],
+) -> ResponseResult<MessageId> {
+    // Retry rate limits once; discard formatting only if Telegram rejects the entities.
+    let mut use_entities = !entities.is_empty();
+    let mut rate_retried = false;
+    for _ in 0..3 {
+        let mut request = text_request(bot, chat, thread, reply, text);
+        if use_entities {
+            request = request.entities(entities.to_vec());
+        }
         match request.await {
-            Err(RequestError::RetryAfter(delay)) if attempt == 0 => {
+            Err(RequestError::Api(teloxide::ApiError::CantParseEntities(_))) if use_entities => {
+                use_entities = false;
+            }
+            Err(RequestError::RetryAfter(delay)) if !rate_retried => {
                 let Some(wait) = retry_wait(delay) else {
                     return Err(RequestError::RetryAfter(delay));
                 };
+                rate_retried = true;
                 tokio::time::sleep(wait).await;
             }
             result => return result.map(|message| message.id),
@@ -379,9 +428,11 @@ mod tests {
                 json!({"ok":false,"error_code":400,"description":"Bad Request: message to edit not found"}),
                 telegram_message(901), json!({"ok":true,"result":true}),
             ]).await;
-            finish_pending(&bot, &command, MessageId(900), "Resultado final").await.unwrap();
+            finish_markdown(&bot, &command, MessageId(900), "**Resultado final**").await.unwrap();
             let requests = server.await.unwrap();
             assert_eq!(requests[1].1["text"], "Resultado final");
+            assert_eq!(requests[0].1["entities"], json!([{"type":"bold","offset":0,"length":15}]));
+            assert_eq!(requests[1].1["entities"], requests[0].1["entities"]);
             assert_eq!(requests[1].1["reply_parameters"]["message_id"], 50);
             assert!(requests[2].0.to_ascii_lowercase().ends_with("/deletemessage"));
             assert_eq!(requests[2].1["message_id"], 900);
@@ -419,6 +470,68 @@ mod tests {
             assert!(matches!(result, Err(RequestError::RetryAfter(_))));
             assert_eq!(server.await.unwrap().len(), 1);
         }).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn formatted_answers_apply_entities_to_edits_and_continuation_messages() {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let command = crate::types::tests::message(json!({"message_id":50,"text":"/ask hola"}));
+            let (bot, server) =
+                telegram_fixture(vec![telegram_message(900), telegram_message(901)]).await;
+            finish_markdown(
+                &bot,
+                &command,
+                MessageId(900),
+                &format!("**{}**", "🦀".repeat(3000)),
+            )
+            .await
+            .unwrap();
+            let requests = server.await.unwrap();
+            for (_, payload) in &requests {
+                let length = payload["text"].as_str().unwrap().encode_utf16().count();
+                assert_eq!(
+                    payload["entities"],
+                    json!([{"type":"bold","offset":0,"length":length}])
+                );
+                assert!(payload.get("parse_mode").is_none());
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn rejected_formatting_retries_the_edit_without_entities() {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let command = crate::types::tests::message(json!({"message_id":50,"text":"/ask hola"}));
+            let (bot, server) = telegram_fixture(vec![
+                json!({"ok":false,"error_code":400,"description":"Bad Request: can't parse entities: invalid entity"}),
+                telegram_message(900),
+            ]).await;
+            finish_markdown(&bot, &command, MessageId(900), "**Hola**").await.unwrap();
+            let requests = server.await.unwrap();
+            assert_eq!(requests[0].1["text"], "Hola");
+            assert_eq!(requests[0].1["entities"], json!([{"type":"bold","offset":0,"length":4}]));
+            assert_eq!(requests[1].1["text"], "Hola");
+            assert!(requests[1].1.get("entities").is_none());
+            assert_eq!(requests[1].1["message_id"], 900);
+        }).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn transcription_delivery_keeps_markdown_symbols_literal() {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let audio = crate::types::tests::message(json!({"message_id":2}));
+            let (bot, server) = telegram_fixture(vec![telegram_message(900)]).await;
+            finish_pending(&bot, &audio, MessageId(900), "**Literal** y `código`")
+                .await
+                .unwrap();
+            let requests = server.await.unwrap();
+            assert_eq!(requests[0].1["text"], "**Literal** y `código`");
+            assert!(requests[0].1.get("entities").is_none());
+        })
+        .await
+        .unwrap();
     }
 
     #[test]

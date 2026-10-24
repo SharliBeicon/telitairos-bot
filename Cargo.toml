@@ -22,3 +22,4 @@ base64 = "0.22"
 linkify = "0.10"
 reqwest = { version = "0.12", default-features = false, features = ["stream", "native-tls"] }
 scraper = { version = "0.24", default-features = false }
+pulldown-cmark = { version = "0.13", default-features = false }

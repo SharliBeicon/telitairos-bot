@@ -98,7 +98,10 @@
 //! are quoted/escaped and retain newest whole messages; an oversized newest
 //! message keeps its author and newest text. There is no expiry, global chat-count bound, or
 //! spending quota. All members of allowed groups can invoke AI commands; monitor costs.
-//! Replies are plain text, split at 4096 UTF-16 units (whitespace-only chunks skipped),
+//! Chat AI answers render basic Markdown as Telegram entities, including bold, italic,
+//! links and code, with formatting ranges adjusted for each chunk. Raw HTML remains
+//! literal. Transcriptions and mechanical feedback remain plain text. Replies are
+//! split at 4096 UTF-16 units (whitespace-only chunks skipped),
 //! and sent in the original topic only for actual topic messages. Rate-limit retries
 //! wait at most 30 seconds.
 //!

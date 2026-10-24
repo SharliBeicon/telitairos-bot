@@ -160,7 +160,7 @@ pub async fn handle_ai_commands(
             }
         }
     };
-    super::finish_pending(&bot, &msg, pending, &answer).await
+    super::finish_markdown(&bot, &msg, pending, &answer).await
 }
 
 async fn history_input(

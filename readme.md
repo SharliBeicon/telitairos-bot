@@ -385,7 +385,15 @@ See also [unbanChatMember](https://core.telegram.org/bots/api#unbanchatmember).
 - Buffers are per chat, **not per topic**, shared across that chat's forum topics.
   They are lost on restart, with no persistence, expiry, or global chat-count
   bound. Size the buffer and deployment appropriately for the groups you serve.
-- Replies are plain text and split into chunks of at most 4096 UTF-16 units,
+- AI answers from `/ask`, `/summary`, and `/mediate` render basic Markdown as Telegram formatting.
+  Bold, italic, strikethrough, links, inline code, code blocks, headings, and lists are supported.
+  Headings use bold text. Raw HTML remains literal, and links accept only HTTP/HTTPS without credentials.
+  Formatting uses explicit Telegram entities, not Telegram MarkdownV2 parsing.
+  Entity ranges use UTF-16 units and continue across message boundaries.
+  Each chunk sends at most 100 entities. Additional formatting is dropped without dropping text.
+  If Telegram rejects the entities, the bot retries that chunk without formatting.
+  Transcriptions, help, moderation feedback, and processing notices remain plain text.
+- Replies are split into chunks of at most 4096 UTF-16 units,
   preserving Unicode and meaningful chunk content. Whitespace-only chunks are
   skipped because Telegram rejects them. Chunks are sent sequentially; a thread
   identifier is forwarded only for actual topic messages. An explicit Telegram
