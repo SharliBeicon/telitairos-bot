@@ -1,6 +1,6 @@
 pub mod admin;
 pub mod ai;
-mod transcript;
+pub(crate) mod transcript;
 
 use crate::{types, TelitairoBot};
 pub use teloxide::{prelude::*, utils::command::BotCommands};
@@ -74,7 +74,13 @@ fn malformed_command_usage(text: &str, username: &str, capacity: usize) -> Optio
 
 pub fn all_command_descriptions() -> String {
     format!(
-        "👮🚨{}\n\n🦀 🤖{}\n\nLas respuestas se dan en español, salvo /transcript, que conserva el idioma del audio sin traducir ni aplicar la personalidad. Cada fragmento responde al audio original; si se ha borrado, se intenta entregar sin respuesta. La descarga tiene un límite exterior de 60 segundos, pero el cliente HTTP puede interrumpir antes (17 segundos por petición de forma predeterminada). La transcripción tiene un límite de 120 segundos. /mediate [N] [objetivo] y /summary [N] usan por defecto todo el historial guardado disponible. N debe estar entre 1 y la capacidad del historial configurada; si hay menos mensajes, se usan los disponibles. No se recupera historial de Telegram; el texto de historial enviado se limita a 30.000 caracteres. El primer elemento con apariencia numérica se reserva para N. Los objetivos complementan los criterios de mediación configurados. La mediación es neutral y propone acuerdos y próximos pasos; el resumen recoge los puntos clave sin inventar información. Ejemplos: /mediate 50 Ayúdanos a acordar un plazo realista; /summary 50. /summary no admite texto adicional. Unidades de moderación: h (horas), m (minutos), s (segundos), p (permanente).",
+        concat!(
+            "👮🚨{}\n\n🦀 🤖{}\n\n",
+            "Las respuestas se dan en español, salvo /transcript, que conserva el idioma del audio sin traducir ni aplicar la personalidad. Cada fragmento responde al audio original; si se ha borrado, se intenta entregar sin respuesta. La descarga de /transcript tiene un límite exterior de 60 segundos, pero el cliente HTTP puede interrumpir antes (17 segundos por petición de forma predeterminada). La transcripción tiene un límite de 120 segundos.\n\n",
+            "/ask lee enlaces compartidos y el mensaje respondido. /summary y /mediate también leen enlaces y adjuntos del historial seleccionado: páginas públicas, imágenes JPEG/PNG/WebP, PDF, archivos de texto UTF-8 y audio o voz mediante transcripción. El contenido se descarga al ejecutar el comando y se puede enviar a OpenAI, con coste adicional. Informa antes a los participantes. No se analizan vídeos ni se ejecuta JavaScript.\n\n",
+            "Se intentan leer hasta 8 recursos distintos por comando. Límites: 20 MB por archivo de Telegram, 2 MB por URL, 6.000 caracteres extraídos por recurso y 24.000 en total. La lectura dispone de hasta 180 segundos en total antes de generar la respuesta. Se avisa del contenido no leído u omitido. Se bloquean URLs a redes privadas o reservadas.\n\n",
+            "/mediate [N] [objetivo] y /summary [N] usan por defecto todo el historial guardado disponible. N debe estar entre 1 y la capacidad del historial configurada; si hay menos mensajes, se usan los disponibles. No se recupera historial de Telegram; el contexto enviado se limita a 50.000 caracteres. El primer elemento con apariencia numérica se reserva para N. Los objetivos complementan los criterios de mediación configurados. La mediación representa las posturas con imparcialidad; el resumen usa la personalidad configurada sin inventar información. Ejemplos: /mediate 50 Ayúdanos a acordar un plazo realista; /summary 50. /summary no admite texto adicional. Unidades de moderación: h (horas), m (minutos), s (segundos), p (permanente)."
+        ),
         admin::AdminCommand::descriptions(),
         ai::AiCommand::descriptions()
     )

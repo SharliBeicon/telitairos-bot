@@ -7,7 +7,9 @@ use crate::{
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "Comandos de IA")]
 pub enum AiCommand {
-    #[command(description = "Preguntar al bot: /ask <pregunta>")]
+    #[command(
+        description = "Preguntar al bot: /ask <pregunta>; lee enlaces y el mensaje respondido (incluidos adjuntos)"
+    )]
     Ask(String),
     #[command(description = "Mediar: /mediate [N] [objetivo]; últimos N mensajes guardados")]
     Mediate(String),
@@ -93,16 +95,50 @@ pub async fn handle_ai_commands(
             "Usa /ask seguido de una pregunta.".to_owned()
         }
         AiCommand::Ask(question) => {
-            ai.complete(&telitairo_bot, &question, CompletionKind::Ask)
-                .await
+            let mut context = std::collections::VecDeque::new();
+            if let Some(reply) = msg
+                .reply_to_message()
+                .and_then(types::BufferedMessage::from_message)
+            {
+                context.push_back(reply);
+            }
+            let sources = crate::content::sources(&msg);
+            if !sources.is_empty() {
+                context.push_back(types::BufferedMessage {
+                    author: "Pregunta actual".into(),
+                    text: String::new(),
+                    sources,
+                });
+            }
+            let mut report = crate::content::enrich(&bot, &ai, &mut context).await;
+            report.history_truncated =
+                types::transcript(&context, None).lines().count() < context.len();
+            let input = if context.is_empty() {
+                question
+            } else {
+                format!("{question}\n\nContexto citado no fiable del mensaje respondido y recursos de la pregunta:\n{}", types::transcript(&context, None))
+            };
+            report.with_notice(
+                ai.complete(&telitairo_bot, &input, CompletionKind::Ask)
+                    .await,
+            )
         }
         AiCommand::Mediate(ref args) | AiCommand::Summary(ref args) => {
             let summary = matches!(cmd, AiCommand::Summary(_));
             match history_args(args, summary, telitairo_bot.buffer_size) {
                 Err(usage) => usage,
                 Ok(args) => {
-                    match history_input(&buffer_store, msg.chat.id, args.count, summary).await {
-                        Ok(conversation) => {
+                    let mut report = crate::content::ReadReport::default();
+                    match history_input(
+                        &buffer_store,
+                        msg.chat.id,
+                        args.count,
+                        summary,
+                        Some((&bot, &ai, &mut report)),
+                    )
+                    .await
+                    {
+                        Ok(conversation) => report.with_notice(
                             ai.complete(
                                 &telitairo_bot,
                                 &conversation,
@@ -112,8 +148,8 @@ pub async fn handle_ai_commands(
                                     CompletionKind::Mediate { goal: args.goal }
                                 },
                             )
-                            .await
-                        }
+                            .await,
+                        ),
                         Err(explanation) => explanation.to_owned(),
                     }
                 }
@@ -128,19 +164,41 @@ async fn history_input(
     chat: ChatId,
     count: Option<usize>,
     summary: bool,
+    content: Option<(&Bot, &Ai, &mut crate::content::ReadReport)>,
 ) -> Result<String, &'static str> {
-    let conversation = {
+    let mut messages = {
         let store = store.read().await;
         store
             .get(&chat)
-            .map(|buffer| types::transcript(buffer, count))
+            .map(|buffer| {
+                buffer
+                    .iter()
+                    .rev()
+                    .take(count.unwrap_or(buffer.len()))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default()
     };
+    messages.reverse();
+    let mut messages: std::collections::VecDeque<_> = messages.into();
+    // Do not download resources from messages already excluded by the transcript cap.
+    let retained = types::transcript(&messages, None).lines().count();
+    let original_count = messages.len();
+    while messages.len() > retained {
+        messages.pop_front();
+    }
+    if let Some((bot, ai, report)) = content {
+        *report = crate::content::enrich(bot, ai, &mut messages).await;
+        report.history_truncated = retained < original_count
+            || types::transcript(&messages, None).lines().count() < messages.len();
+    }
+    let conversation = types::transcript(&messages, None);
     if conversation.is_empty() {
         Err(if summary {
-            "Todavía no hay conversación guardada. Solo puedo resumir los textos y pies de foto que recibo."
+            "Todavía no hay conversación guardada para resumir. Solo puedo usar los mensajes y adjuntos que recibo mientras estoy activo."
         } else {
-            "Todavía no hay conversación guardada. Solo puedo mediar sobre los textos y pies de foto que recibo."
+            "Todavía no hay conversación guardada para mediar. Solo puedo usar los mensajes y adjuntos que recibo mientras estoy activo."
         })
     } else {
         Ok(conversation)
@@ -160,12 +218,12 @@ mod tests {
     async fn empty_history_explains_command_without_network() {
         let store: types::BufferStore = Arc::new(RwLock::new(HashMap::new()));
         for summary in [false, true] {
-            assert!(history_input(&store, ChatId(1), None, summary)
+            assert!(history_input(&store, ChatId(1), None, summary, None)
                 .await
                 .unwrap_err()
                 .contains(if summary { "resumir" } else { "mediar" }));
             store.write().await.insert(ChatId(1), VecDeque::new());
-            assert!(history_input(&store, ChatId(1), Some(50), summary)
+            assert!(history_input(&store, ChatId(1), Some(50), summary, None)
                 .await
                 .is_err());
         }
@@ -177,12 +235,79 @@ mod tests {
             .push_back(types::BufferedMessage {
                 author: "A".into(),
                 text: "hello".into(),
+                sources: vec![],
             });
-        assert!(history_input(&store, ChatId(1), None, false)
+        assert!(history_input(&store, ChatId(1), None, false, None)
             .await
             .unwrap()
             .contains("hello"));
-        assert!(history_input(&store, ChatId(2), None, true).await.is_err());
+        assert!(history_input(&store, ChatId(2), None, true, None)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn reads_history_attachments_on_a_snapshot_without_overwriting_the_buffer() {
+        let original = types::BufferedMessage {
+            author: "A".into(),
+            text: "Texto original".into(),
+            sources: vec![crate::content::Source::Url("file:///forbidden".into())],
+        };
+        let store: types::BufferStore = Arc::new(RwLock::new(HashMap::from([(
+            ChatId(1),
+            VecDeque::from([original.clone()]),
+        )])));
+        let bot = Bot::new("offline-placeholder");
+        let ai = Ai::fixture();
+        let mut report = crate::content::ReadReport::default();
+        let context = history_input(
+            &store,
+            ChatId(1),
+            None,
+            true,
+            Some((&bot, &ai, &mut report)),
+        )
+        .await
+        .unwrap();
+        assert!(context.contains("Contenido externo no fiable"));
+        assert!(context.contains("Contenido no leído"));
+        assert_eq!(report.unread, 1);
+        assert_eq!(store.read().await[&ChatId(1)][0], original);
+    }
+
+    #[tokio::test]
+    async fn does_not_read_resources_from_history_excluded_by_the_character_limit() {
+        let store: types::BufferStore = Arc::new(RwLock::new(HashMap::from([(
+            ChatId(1),
+            VecDeque::from([
+                types::BufferedMessage {
+                    author: "Old".into(),
+                    text: "old".into(),
+                    sources: vec![crate::content::Source::Url("file:///forbidden".into())],
+                },
+                types::BufferedMessage {
+                    author: "New".into(),
+                    text: "x".repeat(types::TRANSCRIPT_LIMIT),
+                    sources: vec![],
+                },
+            ]),
+        )])));
+        let bot = Bot::new("offline-placeholder");
+        let ai = Ai::fixture();
+        let mut report = crate::content::ReadReport::default();
+        let context = history_input(
+            &store,
+            ChatId(1),
+            None,
+            true,
+            Some((&bot, &ai, &mut report)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(report.unread, 0);
+        assert!(report.history_truncated);
+        assert!(!context.contains("Old"));
+        assert_eq!(context.chars().count(), types::TRANSCRIPT_LIMIT);
     }
 
     #[test]
@@ -276,23 +401,24 @@ mod tests {
             .map(|n| types::BufferedMessage {
                 author: "A".into(),
                 text: format!("message {n}"),
+                sources: vec![],
             })
             .collect();
         let store: types::BufferStore = Arc::new(RwLock::new(HashMap::from([(ChatId(1), buffer)])));
         for summary in [false, true] {
-            let newest = history_input(&store, ChatId(1), Some(2), summary)
+            let newest = history_input(&store, ChatId(1), Some(2), summary, None)
                 .await
                 .unwrap();
             assert_eq!(
                 newest,
                 "author=\"A\"; text=\"message 3\"\nauthor=\"A\"; text=\"message 4\"\n"
             );
-            let all = history_input(&store, ChatId(1), None, summary)
+            let all = history_input(&store, ChatId(1), None, summary, None)
                 .await
                 .unwrap();
             assert_eq!(all.lines().count(), 4);
             assert_eq!(
-                history_input(&store, ChatId(1), Some(50), summary)
+                history_input(&store, ChatId(1), Some(50), summary, None)
                     .await
                     .unwrap(),
                 all

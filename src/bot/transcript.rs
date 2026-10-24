@@ -56,7 +56,10 @@ fn check_size(size: u32) -> Result<(), &'static str> {
     }
 }
 
-fn audio_filename(mime: Option<&str>, filename: Option<&str>) -> Result<String, &'static str> {
+pub(crate) fn audio_filename(
+    mime: Option<&str>,
+    filename: Option<&str>,
+) -> Result<String, &'static str> {
     let extension = match mime.map(str::to_ascii_lowercase).as_deref() {
         Some("audio/flac" | "audio/x-flac") => Some("flac"),
         Some("audio/mpeg" | "audio/mp3") => Some("mp3"),

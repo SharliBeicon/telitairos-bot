@@ -1,11 +1,20 @@
 //! # Telitairos Bot 0.2.0
 //!
 //! A Telegram assistant with `/ask <question>`, `/mediate [N] [goal]`,
-//! `/summary [N]`, and public `/help`. Mediation accepts a count, a goal, both,
+//! `/summary [N]`, and `/help` for members of allowed groups. Mediation accepts a count, a goal, both,
 //! or neither; for example `/mediate 50 Ayúdanos a acordar un plazo realista`.
 //! Summary accepts only an optional count and faithfully covers facts, key points,
 //! decisions, and open questions, with factual constraints taking priority over personality.
 //! Both default to all available buffered history.
+//! Chat AI commands read shared public URLs, images, PDF and UTF-8 text files,
+//! plus Telegram audio through transcription. `/ask` also reads the replied-to message.
+//! Resource references are buffered without downloads. Commands attempt up to eight
+//! distinct resources on demand, with a 180-second reading deadline before the answer.
+//! Downloads are limited to 20 MB from Telegram and 2 MB from the web. External text
+//! is capped at 6000 characters per resource and 24,000 per command before the final
+//! 50,000-character context cap. Failed readings and detected omissions produce notices.
+//! External content is untrusted. Public URL fetching blocks private/reserved networks,
+//! validates redirects and pins DNS results. It does not run JavaScript or analyze video.
 //! `N` selects the newest available messages and must be an integer from 1 to
 //! `buffer_size`; fewer available messages means using those available. Invalid
 //! counts (including overflow, negative, or malformed numeric-looking first tokens)
@@ -45,22 +54,34 @@
 //!
 //! ## Configuration and privacy
 //!
-//! Required process environment: `TELOXIDE_TOKEN` and `OPENAI_API_KEY`, both nonempty.
+//! Required process environment: `TELOXIDE_TOKEN`, `OPENAI_API_KEY`, and `ALLOWED_GROUP_IDS`.
+//! `ALLOWED_GROUP_IDS` is a nonempty comma-separated list of negative group IDs.
+//! Access is checked before commands and history collection. Only listed groups and
+//! supergroups are allowed. Private messages are ignored. On an unauthorized group's
+//! membership update or message, the bot attempts to leave and clears its buffered history.
+//! Channels are also rejected. A failed departure never grants access. Missing or invalid
+//! configuration prevents startup. Existing groups are checked when their next update arrives.
+//! Restart after changing the list. Migrated supergroups need their new ID added explicitly.
 //! Bot replies and default prompts are in Spanish, including help and error feedback.
 //! A common language instruction also applies to custom personalities.
-//! `OPENAI_ORG_ID` is optional. `OPENAI_MODEL` defaults to `gpt-6-luna` and must support
-//! Chat Completions. Chat AI operations have a 60-second deadline. Never log credentials.
+//! `OPENAI_ORG_ID` is optional. `OPENAI_MODEL` defaults to `gpt-6.1-sol` and must support
+//! Chat Completions, with image/PDF inputs for those resources. Final chat answers have a
+//! 60-second deadline after resource reading. Never log credentials.
 //! Low reasoning effort is sent only for the exact default model; arbitrary overrides
 //! omit it. Completion budgets are 4096 tokens for questions and 8192 for history commands,
 //! including reasoning tokens. The default personality uses dry sarcasm and affectionate
 //! friend-group banter, allowing a brief rant when warranted, but puts truth, evidence,
 //! and uncertainty ahead of jokes or validation. Mediation avoids false balance and
 //! can draw sharp evidence-backed conclusions or help find actionable agreements.
-//! Summaries use the configured voice with, at most, a separate brief sarcastic closing;
+//! Summaries use the configured voice throughout, including integrated dry wit and
+//! affectionate sarcasm with the default personality, rather than only a closing joke;
 //! they never invent events or attribute the bot's commentary to participants and remain
 //! independent of mediation criteria and invocation-specific goals.
 //!
-//! Mediation and summaries send author names and text/captions to OpenAI. Inform participants
+//! Chat AI commands can send images, PDF files, audio and extracted website/file text to
+//! OpenAI. Mediation and summaries also send author names. Repeated commands reread resources
+//! and can incur additional charges. Website operators see requests from the bot server.
+//! Inform participants
 //! first. `/transcript` sends the replied-to audio to OpenAI and can incur costs;
 //! inform the speaker and participants before using it. To receive ordinary group messages, make the bot an administrator or
 //! disable Telegram privacy mode. Telegram does not deliver other bots' messages.
@@ -68,10 +89,10 @@
 //!
 //! History is memory-only and per chat (shared across topics), retaining the newest
 //! `buffer_size` supported messages not handled as commands. Restarting clears it. Entries and
-//! history transcripts are capped at 30,000 Unicode characters. Transcript fields
+//! history transcripts are capped at 50,000 Unicode characters. Transcript fields
 //! are quoted/escaped and retain newest whole messages; an oversized newest
 //! message keeps its author and newest text. There is no expiry, global chat-count bound, or
-//! spending quota. AI commands remain public; use trusted chats and monitor costs.
+//! spending quota. All members of allowed groups can invoke AI commands; monitor costs.
 //! Replies are plain text, split at 4096 UTF-16 units (whitespace-only chunks skipped),
 //! and sent in the original topic only for actual topic messages. Rate-limit retries
 //! wait at most 30 seconds.
@@ -81,7 +102,7 @@
 //! ```
 //! use telitairos_bot::TelitairoBot;
 //! let bot = TelitairoBot::default();
-//! assert_eq!(bot.buffer_size, 200);
+//! assert_eq!(bot.buffer_size, 500);
 //! ```
 //!
 //! ```no_run
@@ -98,7 +119,9 @@
 //! }
 //! ```
 //!
+mod access;
 mod bot;
+mod content;
 mod gpt;
 mod types;
 
@@ -157,13 +180,15 @@ impl TelitairoBot {
             self.buffer_size > 0,
             "buffer_size must be greater than zero"
         );
+        let allowed_groups =
+            access::GroupAllowlist::from_env().expect("Invalid ALLOWED_GROUP_IDS configuration");
         assert!(
             std::env::var("TELOXIDE_TOKEN").is_ok_and(|token| !token.trim().is_empty()),
             "TELOXIDE_TOKEN must be set and nonempty"
         );
         let ai = gpt::Ai::from_env();
         let bot = Bot::from_env();
-        self.dispatcher_builder(bot, ai)
+        self.dispatcher_builder(bot, ai, allowed_groups)
             .enable_ctrlc_handler()
             .build()
             .dispatch()
@@ -174,6 +199,7 @@ impl TelitairoBot {
         &self,
         bot: Bot,
         ai: gpt::Ai,
+        allowed_groups: access::GroupAllowlist,
     ) -> teloxide::dispatching::DispatcherBuilder<
         Bot,
         teloxide::RequestError,
@@ -181,7 +207,8 @@ impl TelitairoBot {
     > {
         let buffer_store: types::BufferStore = Arc::new(RwLock::new(HashMap::new()));
 
-        let handler = Update::filter_message()
+        let messages = Update::filter_message()
+            .filter_async(access::allow_message)
             .branch(
                 dptree::entry()
                     .filter_command::<ai::AiCommand>()
@@ -194,8 +221,18 @@ impl TelitairoBot {
             )
             .branch(dptree::endpoint(handle_messages));
 
+        let handler = dptree::entry()
+            .branch(Update::filter_my_chat_member().endpoint(access::handle_membership))
+            .branch(messages)
+            .branch(Update::filter_channel_post().filter_async(access::allow_message));
+
         Dispatcher::builder(bot, handler)
-            .dependencies(dptree::deps![buffer_store, self.clone(), ai])
+            .dependencies(dptree::deps![
+                buffer_store,
+                self.clone(),
+                ai,
+                allowed_groups
+            ])
             .default_handler(|_| async move {
                 log::debug!("Ignoring unsupported update");
             })
@@ -224,7 +261,11 @@ mod tests {
     async fn dispatcher_dependencies_validate_without_network() {
         // build() type-checks every handler's injected dependencies, without dispatching.
         let _dispatcher = TelitairoBot::default()
-            .dispatcher_builder(Bot::new("offline-placeholder"), gpt::Ai::fixture())
+            .dispatcher_builder(
+                Bot::new("offline-placeholder"),
+                gpt::Ai::fixture(),
+                access::GroupAllowlist::parse("-1001").unwrap(),
+            )
             .build();
     }
 
@@ -255,13 +296,13 @@ mod tests {
     fn test_default_and_new() {
         let telitairo_default = TelitairoBot::default();
         let telitairo_partially_default = TelitairoBot {
-            buffer_size: 200,
+            buffer_size: types::DEFAULT_BUFFER_SIZE,
             ..Default::default()
         };
         let telitairo_new = TelitairoBot::new(
             types::DEFAULT_PERSONALITY.to_owned(),
             types::DEFAULT_MEDIATION_QUERY.to_owned(),
-            200,
+            types::DEFAULT_BUFFER_SIZE,
         );
 
         assert_eq!(telitairo_default, telitairo_new);

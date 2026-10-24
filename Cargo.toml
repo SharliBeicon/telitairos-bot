@@ -14,7 +14,11 @@ async-openai = { version = "0.42.2", features = ["chat-completion", "audio"] }
 teloxide = { version = "0.17.0", features = ["macros"] }
 log = "0.4.34"
 pretty_env_logger = "0.5.0"
-tokio = { version = "1.54.0", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1.54.0", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 chrono = "0.4.45"
 serde_json = "1"
 futures-util = "0.3"
+base64 = "0.22"
+linkify = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["stream", "native-tls"] }
+scraper = { version = "0.24", default-features = false }
