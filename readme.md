@@ -212,6 +212,17 @@ Supported content:
 - UTF-8 text files, including TXT, CSV, JSON, Markdown, code, XML, YAML, and TOML. Binary files and archives are not supported.
 - Telegram audio and voice messages. The dedicated transcription model converts speech to text before the final answer.
 
+Links that start with `www.` without a scheme use HTTPS.
+FixupX and FxTwitter status links, including their `www` domains, use the public
+`https://api.fxtwitter.com/2/status/{id}` endpoint instead of the browser/embed page.
+This adds a request to FxTwitter with the public post ID, without account credentials.
+The reader extracts the post text, author, poll options, available article text, and one quoted post.
+It does not fetch the full thread or analyze embedded images and videos.
+Published image descriptions are labeled as unverified alternative text.
+Unavailable quotes, article previews, and unread media produce partial-content markers.
+Private or deleted posts, service errors, and rate limits can still prevent reading.
+See the [FxEmbed API documentation](https://docs.fxembed.com/api/introduction/).
+
 The bot stores attachment references, not their bytes, when messages arrive.
 It downloads and reads content only when a command needs it.
 Reading uses the newest messages first and attempts at most eight distinct resources per command.
@@ -339,6 +350,13 @@ See also [unbanChatMember](https://core.telegram.org/bots/api#unbanchatmember).
 
 ## Runtime behavior and limits
 
+- Valid AI requests first send `⏳ Procesando…` before downloads or model calls.
+  The bot edits that message with the answer or an operation error.
+  For long answers, it edits the notice with the first chunk and sends the remaining chunks separately.
+  The notice replies to the command in the same topic. For `/transcript`, it replies to the original audio instead.
+  If editing fails, the bot sends new result messages and attempts to delete the stale notice.
+  Telegram rate limits can prevent completion. If the initial notice cannot be sent, the bot does not start paid processing.
+  Usage errors do not need a notice. Notices and result messages are not added to the history buffer.
 - One reusable OpenAI client is shared by handlers. Each final chat answer has a
   60-second deadline, including SDK retries. External-content reading has a separate
   180-second total deadline. Requests use Chat Completions and

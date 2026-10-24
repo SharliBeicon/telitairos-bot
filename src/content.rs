@@ -1,5 +1,7 @@
 //! Bounded, on-demand reading of explicitly shared links and Telegram attachments.
 
+mod twitter;
+
 use crate::{gpt::Ai, types::BufferedMessage};
 use futures_util::StreamExt;
 use linkify::{LinkFinder, LinkKind};
@@ -28,10 +30,16 @@ pub(crate) struct ReadReport {
 impl ReadReport {
     pub(crate) fn with_notice(&self, mut answer: String) -> String {
         if self.unread > 0 {
-            answer.push_str(&format!("\n\nNota de lectura: {} recursos no se han podido leer o se han omitido por los límites de lectura.", self.unread));
+            if self.unread == 1 {
+                answer.push_str("\n\nNota de lectura: 1 recurso no se ha podido leer o se ha omitido por los límites de lectura.");
+            } else {
+                answer.push_str(&format!("\n\nNota de lectura: {} recursos no se han podido leer o se han omitido por los límites de lectura.", self.unread));
+            }
         }
         if self.partial {
-            answer.push_str("\nNota de lectura: parte del contenido externo se ha truncado.");
+            answer.push_str(
+                "\nNota de lectura: parte del contenido externo es parcial o se ha truncado.",
+            );
         }
         if self.history_truncated {
             answer.push_str("\nNota de lectura: el contexto supera el límite de caracteres; solo se incluye el historial más reciente que cabe.");
@@ -59,8 +67,15 @@ pub(crate) enum Source {
 pub(crate) fn urls(text: &str) -> Vec<Source> {
     let mut finder = LinkFinder::new();
     finder.kinds(&[LinkKind::Url]);
+    finder.url_must_have_scheme(false);
     let mut result: Vec<_> = finder
         .links(text)
+        .filter(|link| {
+            let raw = link.as_str();
+            raw.get(..4)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("www."))
+                || Url::parse(raw).is_ok()
+        })
         .take(MAX_SOURCES + 1)
         .map(|link| Source::Url(link.as_str().to_owned()))
         .collect();
@@ -267,8 +282,19 @@ fn validate_url(url: &Url) -> Result<(), &'static str> {
     Ok(())
 }
 
+fn web_url(raw: &str) -> Result<Url, &'static str> {
+    if raw
+        .get(..4)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("www."))
+    {
+        Url::parse(&format!("https://{raw}")).map_err(|_| UNREAD)
+    } else {
+        Url::parse(raw).map_err(|_| UNREAD)
+    }
+}
+
 async fn web_bytes(raw: &str) -> Result<(String, Vec<u8>), &'static str> {
-    let mut url = Url::parse(raw).map_err(|_| UNREAD)?;
+    let mut url = web_url(raw)?;
     for _ in 0..4 {
         validate_url(&url)?;
         let host = url.host_str().ok_or(UNREAD)?.trim_matches(['[', ']']);
@@ -308,7 +334,17 @@ async fn web_bytes(raw: &str) -> Result<(String, Vec<u8>), &'static str> {
             continue;
         }
         if !response.status().is_success() {
-            return Err(UNREAD);
+            return Err(match response.status().as_u16() {
+                401 | 403 => {
+                    "Contenido no leído: el sitio deniega el acceso o requiere autenticación."
+                }
+                404 => "Contenido no leído: el sitio indica que el recurso no está disponible.",
+                429 => "Contenido no leído: el sitio ha limitado temporalmente las peticiones.",
+                500..=599 => {
+                    "Contenido no leído: el servicio de origen está fallando temporalmente."
+                }
+                _ => UNREAD,
+            });
         }
         let mime = response
             .headers()
@@ -388,6 +424,14 @@ async fn read_source(bot: &Bot, ai: &Ai, source: &Source) -> Result<String, &'st
             } => return Err("Contenido no leído: formato de archivo no compatible."),
             Source::File { meta, kind } => (kind.clone(), telegram_bytes(bot, meta).await?),
             Source::Url(url) => {
+                let parsed = web_url(url)?;
+                validate_url(&parsed)?;
+                if let Some(id) = twitter::post_id(&parsed) {
+                    // Use the documented data endpoint, not the browser/embed redirect.
+                    let (_, bytes) =
+                        web_bytes(&format!("https://api.fxtwitter.com/2/status/{id}")).await?;
+                    return twitter::post_text(&bytes, id);
+                }
                 let (mime, bytes) = web_bytes(url).await?;
                 if matches!(mime.as_str(), "text/html" | "application/xhtml+xml") {
                     return html_text(&bytes);
@@ -467,8 +511,9 @@ pub(crate) async fn enrich(
             };
             report.unread += usize::from(result.is_err());
             let result = result.unwrap_or_else(str::to_owned);
-            report.partial |=
-                result.chars().count() > MAX_TEXT || result.contains("[Contenido truncado]");
+            report.partial |= result.chars().count() > MAX_TEXT
+                || result.contains("[Contenido truncado]")
+                || result.contains("[Contenido parcial]");
             let text = bounded_text(&result);
             let text = if text.chars().count() > remaining_text && remaining_text >= 200 {
                 report.partial = true;
@@ -550,6 +595,37 @@ mod tests {
             assert!(validate_url(&Url::parse(url).unwrap()).is_err());
         }
         assert!(validate_url(&Url::parse("https://example.com").unwrap()).is_ok());
+    }
+
+    #[test]
+    fn schemeless_www_links_use_https_without_weakening_url_validation() {
+        let raw = "www.fixupx.com/user/status/12345?s=20";
+        assert_eq!(urls(raw), vec![Source::Url(raw.into())]);
+        assert!(
+            urls("Adjunto main.rs y config.json; ejemplo.com no es un enlace explícito.")
+                .is_empty()
+        );
+        let parsed = web_url(raw).unwrap();
+        assert_eq!(parsed.scheme(), "https");
+        assert_eq!(twitter::post_id(&parsed), Some("12345"));
+        for raw in [
+            "www.fixupx.com@127.0.0.1/user/status/12345",
+            "file:///etc/passwd",
+            "https://user:password@fixupx.com/user/status/12345",
+        ] {
+            assert!(validate_url(&web_url(raw).unwrap()).is_err(), "{raw}");
+        }
+    }
+
+    #[tokio::test]
+    async fn twitter_adapter_validates_the_original_url_before_any_fetch() {
+        let bot = Bot::new("offline-placeholder");
+        let ai = Ai::fixture();
+        let source = Source::Url("https://user:password@fixupx.com/user/status/12345".into());
+        assert!(read_source(&bot, &ai, &source)
+            .await
+            .unwrap_err()
+            .contains("sin credenciales"));
     }
 
     #[test]

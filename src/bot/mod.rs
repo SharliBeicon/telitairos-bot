@@ -120,6 +120,85 @@ pub async fn send_text(bot: &Bot, message: &Message, text: &str) -> ResponseResu
     send_text_at(bot, message, text, None).await
 }
 
+async fn start_pending(bot: &Bot, message: &Message) -> ResponseResult<MessageId> {
+    send_chunk(
+        bot,
+        message.chat.id,
+        reply_thread(message),
+        Some(message.id),
+        "⏳ Procesando…",
+    )
+    .await
+}
+
+async fn finish_pending(
+    bot: &Bot,
+    message: &Message,
+    pending: MessageId,
+    text: &str,
+) -> ResponseResult<()> {
+    let mut chunks = sendable_chunks(text);
+    let first = chunks
+        .next()
+        .unwrap_or("No he recibido una respuesta válida. Inténtalo de nuevo.");
+    let edit = edit_chunk(bot, message.chat.id, pending, first).await;
+    if let Err(error @ RequestError::RetryAfter(_)) = edit {
+        return Err(error);
+    }
+    if edit.is_err() {
+        // The placeholder can be deleted while the paid operation is in progress.
+        // Keep the answer even if Telegram no longer permits editing that message.
+        log::warn!("Could not edit AI placeholder; sending the answer as new messages");
+        send_text_at(
+            bot,
+            message,
+            if text.trim().is_empty() { first } else { text },
+            Some(message.id),
+        )
+        .await?;
+        if bot.delete_message(message.chat.id, pending).await.is_err() {
+            log::warn!("Could not remove AI placeholder after fallback delivery");
+        }
+        return Ok(());
+    }
+    for chunk in chunks {
+        send_chunk(
+            bot,
+            message.chat.id,
+            reply_thread(message),
+            Some(message.id),
+            chunk,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+fn edit_request(
+    bot: &Bot,
+    chat: ChatId,
+    pending: MessageId,
+    text: &str,
+) -> <Bot as Requester>::EditMessageText {
+    bot.edit_message_text(chat, pending, text)
+}
+
+async fn edit_chunk(bot: &Bot, chat: ChatId, pending: MessageId, text: &str) -> ResponseResult<()> {
+    for attempt in 0..2 {
+        match edit_request(bot, chat, pending, text).await {
+            Err(RequestError::Api(teloxide::ApiError::MessageNotModified)) => return Ok(()),
+            Err(RequestError::RetryAfter(delay)) if attempt == 0 => {
+                let Some(wait) = retry_wait(delay) else {
+                    return Err(RequestError::RetryAfter(delay));
+                };
+                tokio::time::sleep(wait).await;
+            }
+            result => return result.map(|_| ()),
+        }
+    }
+    unreachable!("the final edit attempt returns")
+}
+
 async fn send_text_at(
     bot: &Bot,
     message: &Message,
@@ -155,7 +234,7 @@ async fn send_chunk(
     thread: Option<ThreadId>,
     reply: Option<MessageId>,
     text: &str,
-) -> ResponseResult<()> {
+) -> ResponseResult<MessageId> {
     // Retry the same chunk once on Telegram's explicit rate-limit response.
     for attempt in 0..2 {
         let request = text_request(bot, chat, thread, reply, text);
@@ -166,7 +245,7 @@ async fn send_chunk(
                 };
                 tokio::time::sleep(wait).await;
             }
-            result => return result.map(|_| ()),
+            result => return result.map(|message| message.id),
         }
     }
     unreachable!("the final send attempt returns")
@@ -195,6 +274,152 @@ mod tests {
     use super::*;
     use crate::types::tests::message;
     use serde_json::json;
+
+    async fn telegram_fixture(
+        responses: Vec<serde_json::Value>,
+    ) -> (
+        Bot,
+        tokio::task::JoinHandle<Vec<(String, serde_json::Value)>>,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for response in responses {
+                let (socket, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                let (header_end, length) = loop {
+                    socket.readable().await.unwrap();
+                    let mut chunk = [0u8; 8192];
+                    match socket.try_read(&mut chunk) {
+                        Ok(0) => panic!("Telegram fixture request ended early"),
+                        Ok(n) => bytes.extend_from_slice(&chunk[..n]),
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => continue,
+                        Err(error) => panic!("{error}"),
+                    }
+                    if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                        let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+                        let length: usize = headers
+                            .lines()
+                            .find_map(|line| {
+                                let (name, value) = line.split_once(':')?;
+                                name.eq_ignore_ascii_case("content-length")
+                                    .then(|| value.trim().parse().unwrap())
+                            })
+                            .unwrap();
+                        if bytes.len() >= end + 4 + length {
+                            break (end + 4, length);
+                        }
+                    }
+                };
+                let path = std::str::from_utf8(&bytes[..header_end])
+                    .unwrap()
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap()
+                    .to_owned();
+                let body = serde_json::from_slice(&bytes[header_end..header_end + length]).unwrap();
+                requests.push((path, body));
+                let body = serde_json::to_string(&response).unwrap();
+                let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                let mut rest = response.as_bytes();
+                while !rest.is_empty() {
+                    socket.writable().await.unwrap();
+                    match socket.try_write(rest) {
+                        Ok(n) => rest = &rest[n..],
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => continue,
+                        Err(error) => panic!("{error}"),
+                    }
+                }
+            }
+            requests
+        });
+        (
+            Bot::new("offline-placeholder").set_api_url(url.parse().unwrap()),
+            server,
+        )
+    }
+
+    fn telegram_message(id: i32) -> serde_json::Value {
+        json!({"ok":true,"result":crate::types::tests::message(json!({"message_id":id,"text":"fixture"}))})
+    }
+
+    #[tokio::test]
+    async fn placeholder_is_edited_and_only_remaining_chunks_are_sent_in_the_same_topic() {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let command = crate::types::tests::message(json!({"message_id":50,"text":"/ask hola","message_thread_id":42,"is_topic_message":true}));
+            let answer = "Respuesta 🦀\n".repeat(1000);
+            let count = sendable_chunks(&answer).count();
+            let (bot, server) = telegram_fixture((0..=count).map(|n| telegram_message(900 + n as i32)).collect()).await;
+            let pending = start_pending(&bot, &command).await.unwrap();
+            assert_eq!(pending, MessageId(900));
+            finish_pending(&bot, &command, pending, &answer).await.unwrap();
+            let requests = server.await.unwrap();
+            assert!(requests[0].0.to_ascii_lowercase().ends_with("/sendmessage"));
+            assert_eq!(requests[0].1["text"], "⏳ Procesando…");
+            assert_eq!(requests[0].1["reply_parameters"]["message_id"], 50);
+            assert_eq!(requests[0].1["message_thread_id"], 42);
+            assert!(requests[1].0.to_ascii_lowercase().ends_with("/editmessagetext"));
+            assert_eq!(requests[1].1["message_id"], 900);
+            let mut delivered = requests[1].1["text"].as_str().unwrap().to_owned();
+            for (_, payload) in &requests[2..] {
+                assert_eq!(payload["reply_parameters"]["message_id"], 50);
+                assert_eq!(payload["message_thread_id"], 42);
+                delivered.push_str(payload["text"].as_str().unwrap());
+            }
+            assert_eq!(delivered, answer);
+        }).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn deleted_placeholder_falls_back_to_a_new_reply_without_losing_the_answer() {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let command = crate::types::tests::message(json!({"message_id":50,"text":"/summary"}));
+            let (bot, server) = telegram_fixture(vec![
+                json!({"ok":false,"error_code":400,"description":"Bad Request: message to edit not found"}),
+                telegram_message(901), json!({"ok":true,"result":true}),
+            ]).await;
+            finish_pending(&bot, &command, MessageId(900), "Resultado final").await.unwrap();
+            let requests = server.await.unwrap();
+            assert_eq!(requests[1].1["text"], "Resultado final");
+            assert_eq!(requests[1].1["reply_parameters"]["message_id"], 50);
+            assert!(requests[2].0.to_ascii_lowercase().ends_with("/deletemessage"));
+            assert_eq!(requests[2].1["message_id"], 900);
+        }).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn provider_errors_replace_the_placeholder_instead_of_leaving_it_pending() {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let audio = crate::types::tests::message(json!({"message_id":2}));
+            let (bot, server) = telegram_fixture(vec![telegram_message(900)]).await;
+            finish_pending(
+                &bot,
+                &audio,
+                MessageId(900),
+                "No he podido transcribir el audio.",
+            )
+            .await
+            .unwrap();
+            let requests = server.await.unwrap();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].1["message_id"], 900);
+            assert_eq!(requests[0].1["text"], "No he podido transcribir el audio.");
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn long_edit_rate_limits_do_not_trigger_an_immediate_fallback_send() {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let command = crate::types::tests::message(json!({"message_id":50,"text":"/summary"}));
+            let (bot, server) = telegram_fixture(vec![json!({"ok":false,"error_code":429,"description":"Too Many Requests: retry after 60","parameters":{"retry_after":60}})]).await;
+            let result = finish_pending(&bot, &command, MessageId(900), "Resultado").await;
+            assert!(matches!(result, Err(RequestError::RetryAfter(_))));
+            assert_eq!(server.await.unwrap().len(), 1);
+        }).await.unwrap();
+    }
 
     #[test]
     fn transcript_chunks_reply_to_original_audio_not_command() {

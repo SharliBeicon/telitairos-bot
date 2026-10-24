@@ -6,6 +6,11 @@
 //! Summary accepts only an optional count and faithfully covers facts, key points,
 //! decisions, and open questions, with factual constraints taking priority over personality.
 //! Both default to all available buffered history.
+//! Valid AI requests send a processing notice before downloads or model calls,
+//! then edit it with the result or operation error. Long results continue in new
+//! messages. Notices reply to the command, or to the original audio for `/transcript`.
+//! Failed edits fall back to new messages and attempted notice deletion, except
+//! when Telegram rate limits stop delivery. Failed notices stop paid processing.
 //! Chat AI commands read shared public URLs, images, PDF and UTF-8 text files,
 //! plus Telegram audio through transcription. `/ask` also reads the replied-to message.
 //! Resource references are buffered without downloads. Commands attempt up to eight

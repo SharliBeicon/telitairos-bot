@@ -89,6 +89,10 @@ pub async fn handle_ai_commands(
     }) {
         return send_text(&bot, &msg, &usage).await;
     }
+    if matches!(cmd, AiCommand::Transcript) {
+        return super::transcript::handle(&bot, &ai, &msg).await;
+    }
+    let pending = super::start_pending(&bot, &msg).await?;
     let answer = match cmd {
         AiCommand::Transcript => return super::transcript::handle(&bot, &ai, &msg).await,
         AiCommand::Ask(question) if question.trim().is_empty() => {
@@ -156,7 +160,7 @@ pub async fn handle_ai_commands(
             }
         }
     };
-    send_text(&bot, &msg, &answer).await
+    super::finish_pending(&bot, &msg, pending, &answer).await
 }
 
 async fn history_input(

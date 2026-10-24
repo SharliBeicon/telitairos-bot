@@ -112,14 +112,15 @@ pub(super) async fn handle(bot: &Bot, ai: &Ai, command: &Message) -> ResponseRes
         Ok(source) => source,
         Err(reason) => return send_text(bot, command, reason).await,
     };
+    let pending = super::start_pending(bot, source.message).await?;
     let bytes = match tokio::time::timeout(Duration::from_secs(60), download(bot, source.file)).await {
         Ok(Ok(bytes)) => bytes,
-        Ok(Err(reason)) => return send_text(bot, command, reason).await,
-        Err(_) => return send_text(bot, command, "La descarga del audio ha superado el límite de 60 segundos. Inténtalo de nuevo más tarde.").await,
+        Ok(Err(reason)) => return super::finish_pending(bot, source.message, pending, reason).await,
+        Err(_) => return super::finish_pending(bot, source.message, pending, "La descarga del audio ha superado el límite de 60 segundos. Inténtalo de nuevo más tarde.").await,
     };
     match ai.transcribe(source.filename, bytes).await {
-        Ok(text) => super::send_text_at(bot, source.message, &text, Some(source.message.id)).await,
-        Err(reason) => send_text(bot, command, reason).await,
+        Ok(text) => super::finish_pending(bot, source.message, pending, &text).await,
+        Err(reason) => super::finish_pending(bot, source.message, pending, reason).await,
     }
 }
 
