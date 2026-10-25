@@ -10,6 +10,7 @@ categories = ["command-line-utilities"]
 exclude = ["src/main.rs"]
 
 [dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 async-openai = { version = "0.42.2", features = ["chat-completion", "audio"] }
 teloxide = { version = "0.17.0", features = ["macros"] }
 log = "0.4.34"

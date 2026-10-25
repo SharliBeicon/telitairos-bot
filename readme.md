@@ -71,7 +71,8 @@ This command contacts Telegram and requires real credentials. The development te
 
 ### Deploy with Coolify
 
-The bot polls Telegram for updates. It does not accept HTTP requests or expose ports.
+The bot polls Telegram for updates. It serves a local health endpoint at
+`http://127.0.0.1:8080/health`, but does not expose a public HTTP service.
 Run only one instance for each Telegram bot token, including instances outside Coolify.
 Multiple instances with the same token compete for Telegram updates.
 
@@ -84,7 +85,7 @@ Multiple instances with the same token compete for Telegram updates.
 7. Clear any prefilled domain.
 8. Clear `Ports Exposes`.
 9. Leave `Ports Mappings` empty.
-10. Disable HTTP health checks.
+10. Use the health check built into the Dockerfile; no dashboard HTTP check is needed.
 11. Under advanced settings, select `Container naming: Consistent name (no rolling updates)`.
 12. Deploy the application.
 
@@ -95,6 +96,20 @@ The image uses `RUST_LOG=info` by default. Do not enable HTTP or SDK debug logs.
 The Dockerfile builds the locked dependencies with Rust 1.96.
 The image runs the bot as a non-root user on Debian Bookworm with TLS certificates and OpenSSL.
 It uses `SIGINT` to stop the bot through its shutdown handler.
+The image checks `GET /health` every 30 seconds, with a 5-second timeout,
+a 20-second startup period, and three failed attempts before it becomes unhealthy.
+Coolify detects the Dockerfile health check after redeployment. Keep the domain,
+exposed ports, and port mappings empty; the check runs inside the container.
+To test it from Coolify's application terminal, run:
+
+```sh
+curl --fail --noproxy '*' http://127.0.0.1:8080/health
+```
+
+The endpoint returns HTTP 200 with `ok` while the application runs.
+It checks local application liveness, not Telegram polling progress, credentials,
+or OpenAI availability. It makes no external requests and incurs no API charges.
+It stops when the dispatcher exits. The library's `dispatch()` method does not start this endpoint.
 The bot needs no persistent volume. It keeps conversation history in memory and loses it on restart or redeployment.
 
 To build the image locally without credentials, run this command from the repository:
